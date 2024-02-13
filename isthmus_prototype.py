@@ -1,10 +1,8 @@
-import os
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from skimage import measure
-from pycallgraph2 import PyCallGraph
-from pycallgraph2.output import GraphvizOutput
+
+from Marching_Cubes import marching_cubes, mesh_surface_area
 
 def plot_nice(ax, lims, file, xy=False):
     ax.set_xlabel("x-axis")
@@ -101,7 +99,7 @@ def main():
     ms[:, :, :] = 1
     ms = ms.astype(bool)
     # Use marching cubes to obtain the surface mesh of these ellipsoids
-    verts, faces, normals, values = measure.marching_cubes( \
+    verts, faces, normals, values = marching_cubes( \
         volume=ellip_base, level=thresh, \
         gradient_direction='descent', \
         allow_degenerate=False, mask=ms)
@@ -127,14 +125,8 @@ def main():
     # quality checks - surface area
     radius = ((size-1)/2)*0.1
     analytical_sa = 4*np.pi*radius**2
-    mc_sa = measure.mesh_surface_area(verts, faces)
+    mc_sa = mesh_surface_area(verts, faces)
     print('Surface area error: ' + '{:.1f}'.format(100*(mc_sa - analytical_sa)/analytical_sa) + ' %')
 
 if __name__=='__main__':
-
-    os.chdir("/Users/bdtacchi/Desktop/UKY/CTFL/isthmus")
-
-    graphviz = GraphvizOutput(output_file='filter_none.png')
-
-    with PyCallGraph(output=graphviz):
-        main()
+    main()
