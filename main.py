@@ -71,72 +71,45 @@ def plot_results(verts, faces, lo, hi, proj=False):
 np.random.seed(199)
 ns = 1
 
-
+"""
 lo = [-2.5, -2.5, -2.5]
 hi = [2.5, 2.5, 2.5]
 lims = np.array([lo, hi])
-ncells = np.array([10, 10, 10])
+ncells = np.array([50,50,50])
 
 
 mc_time = []
 nvox = []
 
-v_size = [0.1,0.05,0.04]
+v_size = [0.1,0.05,0.04, 0.035, 0.032]
+
 
 for v in v_size:
     xs, ys, zs = make_sphere(0,0,0,1, v)
     nvox.append(len(xs))
     
     voxels = np.transpose(np.array([xs, ys, zs]))
+    name = 'vox2surf.' + str(len(voxels)) + '.surf' # name of outputted surface file
     
     # create triangle mesh and assign voxels to triangles
     t1 = time()
-    mc_system = MC_System(lims, ncells, v, voxels)
+    mc_system = MC_System(lims, ncells, v, voxels, name)
     voxel_triangle_ids = mc_system.voxel_triangle_ids.astype(int)
     mc_time.append(time() - t1)
+    
+    # create array of triangle ids  
+    f = open('solid.' + str(len(voxels)) + '.tris', 'w')
+    f.write('x,y,z,t\n')
+    for i in range(len(voxels)):
+        f.write('{x},{y},{z},{t}\n'.format(x = voxels[i][0], y = voxels[i][1], z = voxels[i][2], t = voxel_triangle_ids[i]))
+    f.close()
+    
     print('done...')
     
-    #plot_results(mc_system.mesh.verts, mc_system.mesh.faces, lo, hi)
-
-nvox = np.array(nvox)
-mc_time = np.array(mc_time)
-plt.figure()
-a, b = np.polyfit(nvox, mc_time, 1)
-plt.plot(nvox, a*nvox + b, color='blue', label='Best Fit Line')
-plt.scatter(nvox, mc_time, color='red', label='Isthmus Output')
-plt.xlabel('Number of voxels')
-plt.ylabel('Time for Marching Cubes System')
-plt.title('10x10x10 MC Grid')
-plt.legend()
-plt.grid()
-
-"""
-# create array of triangle ids (add 1 to match sparta indices)
-voxs = mc_system.voxels
-triangles = []
-for i in range(len(voxs)):
-    triangles.append(voxs[i].triangle + 1)
-
-vx_x = []
-vx_y = []
-vx_z = []
-vx_tri = []
-for i in range(len(voxs)):
-    vx_x.append(voxs[i].position[0])
-    vx_y.append(voxs[i].position[1])
-    vx_z.append(voxs[i].position[2])
-    vx_tri.append(voxs[i].triangle)
-    
-f = open('solid.tris', 'w')
-f.write('x,y,z,t\n')
-for i in range(len(vx_x)):
-    f.write('{x},{y},{z},{t}\n'.format(x = vx_x[i], y = vx_y[i], z = vx_z[i], t = vx_tri[i]))
-f.close()
-"""
+    plot_results(mc_system.verts, mc_system.faces, lo, hi)
 
 
 
-"""
 nvox = np.array(nvox)
 mc_time = np.array(mc_time)
 plt.figure()
@@ -148,35 +121,47 @@ plt.ylabel('Time for Marching Cubes System')
 plt.title('50x50x50 MC Grid')
 plt.legend()
 plt.grid()
+"""
+
+lo = [-2.5, -2.5, -2.5]
+hi = [2.5, 2.5, 2.5]
+lims = np.array([lo, hi])
+ncells = np.array([[10,10,10],[20,20,20],[30,30,30]])
 
 
 mc_time = []
-mc_cells = []
-ncells = [[50, 50, 50], [60,60,60]]
-v_size = 0.04
-xs, ys, zs = generate_test_voxels(v_size, ns, lims)
-total_voxels = len(xs)
-voxels = np.transpose(np.array([xs, ys, zs]))
-for i in range(len(ncells)):
-    
-    mc_cells.append(np.prod(np.array(ncells[i])))
-    
-    t1 = time()
-    mc_grid = MC_Grid(lims, ncells[i], v_size, voxels)
-    mc_time.append(time() - t1)
+nc = []
 
-    plot_results(mc_grid.mesh.verts, mc_grid.mesh.faces, lo, hi)
+v_size = 0.045
+
+
+for c in ncells:
+    xs, ys, zs = make_sphere(0,0,0,1, v_size)
+    nc.append(np.prod(np.array(c)))
     
-mc_cells = np.array(mc_cells)
+    voxels = np.transpose(np.array([xs, ys, zs]))
+    name = 'vox2surf.' + str(len(voxels)) + '.surf' # name of outputted surface file
+    
+    # create triangle mesh and assign voxels to triangles
+    t1 = time()
+    mc_system = MC_System(lims, c, v_size, voxels, name)
+    voxel_triangle_ids = mc_system.voxel_triangle_ids.astype(int)
+    mc_time.append(time() - t1)
+    
+    print('done...')
+    
+    plot_results(mc_system.verts, mc_system.faces, lo, hi)
+
+
+
+nc = np.array(nc)
 mc_time = np.array(mc_time)
 plt.figure()
-a, b = np.polyfit(mc_cells, mc_time, 1)
-plt.plot(mc_cells, a*mc_cells + b, color='blue', label='Best Fit Line')
-plt.scatter(mc_cells, mc_time, color='red', label='Isthmus Output')
-plt.xlabel('Number of MC Cells')
+a, b = np.polyfit(nc, mc_time, 1)
+plt.plot(nc, a*nc + b, color='blue', label='Best Fit Line')
+plt.scatter(nc, mc_time, color='red', label='Isthmus Output')
+plt.xlabel('Number of cells')
 plt.ylabel('Time for Marching Cubes System')
-plt.title(str(total_voxels) + ' voxels')
+plt.title(str(len(voxels)) + ' MC Grid')
 plt.legend()
 plt.grid()
-
-"""

@@ -1,14 +1,12 @@
 import numpy as np
 from Marching_Cubes import marching_cubes, mesh_surface_area
 
-# POSITIONS and LENGTHS in x,y,z order
-# INDICES in z,y,x order
 # program assumes minimal overlap of pixels
 
 # this is where all the magic happens, basically everything else is owned by
 # this class
 class MC_System:  
-    def __init__(self, lims, ncells, voxel_size, voxels):
+    def __init__(self, lims, ncells, voxel_size, voxels, name):
         # check validity of grid being created and voxel data
         self.check_grid(lims, ncells)
         self.check_voxels(lims, ncells, voxel_size, np.transpose(voxels))
@@ -17,26 +15,22 @@ class MC_System:
         self.voxel_size = voxel_size
         self.voxels = voxels
         
-        # execute marching cubes
-        self.corner_grid = Corner_Grid(lims, ncells + 1)
+        # prepare grid to feed to marching cubes
+        self.corner_grid = Corner_Grid(lims, ncells + 1)       
+        self.corner_grid.associate_voxels(self.voxels, self.voxel_size) # assign voxels to owning corner and divide volumes        
         
-        self.corner_grid.associate_voxels(self.voxels, self.voxel_size) # assign voxels to owning corner and divide volumes
-        
+        # execute marching cubes and write SPARTA compliant surface
         self.verts, self.faces = self.create_surface()
+        self.transform_surface()  
+        self.write_surface(name)
         
-        self.transform_surface()
+        # associate voxels to triangles by way of the containing cell
+        self.cell_grid = Cell_Grid(lims, ncells) 
+        self.cell_grid.associate_voxels(self.voxels) # associate voxels to cells
+        self.cell_grid.associate_triangles(self.verts, self.faces) # associate triangles to cells
+        self.voxel_triangle_ids = self.cell_grid.voxels_to_triangles(self.verts, self.voxels) # associate voxels to triangle in same cell
         
-        self.write_surface()
-        
-        self.cell_grid = Cell_Grid(lims, ncells)
-        
-        self.cell_grid.associate_voxels(self.voxels)
-        
-        self.cell_grid.associate_triangles(self.verts, self.faces)
-        
-        self.voxel_triangle_ids = self.cell_grid.voxels_to_triangles(self.verts, self.voxels)
-        
-    
+    # check validity of grid limits and number of cells
     def check_grid(self, lims, ncells):
         if (lims.shape != (2,3)):
             raise Exception("Invalid grid limits given")
@@ -50,7 +44,7 @@ class MC_System:
             if (not np.issubdtype(ncells[i], np.integer)):
                 raise Exception("Numbers of grid cells must be integers")
             
-     
+    # check validity of voxel positions and size
     def check_voxels(self, lims, ncells, voxel_size, positions):
         cell_length = (lims[1] - lims[0])/ncells # length of cell in [x,y,z] directions
         if (any(cell_length < voxel_size)):
@@ -70,7 +64,8 @@ class MC_System:
             border = lims[1][i] - 0.5*(voxel_size + cell_length[i])
             if (any(x > border for x in positions[i])):
                 raise Exception("Voxel(s) outside of acceptable grid space")
-                
+    
+    # produce surface with marching cubes from corner grid
     def create_surface(self): 
         cg = self.corner_grid
         corner_volumes = np.asarray([[[0.0]*cg.dims[0]]*cg.dims[1]]*cg.dims[2])
@@ -85,6 +80,7 @@ class MC_System:
 
         return verts, faces
 
+    # marching_cubes() gives origin of (0,0,0) and cell size of 1; this rescales the surface properly
     def transform_surface(self):
         cg = self.corner_grid
         
@@ -96,8 +92,9 @@ class MC_System:
         translations = np.array([cg.lims[0]]*len(self.verts))
         self.verts += translations
         
-    def write_surface(self):
-        surf_file = open("vox2mesh.surf", "w")
+    # write surface of triangles to disk, the argument is the name of the file
+    def write_surface(self, name):
+        surf_file = open(name, "w")
         surf_file.write('surf file from isthmus\n\n')
         surf_file.write('{p} points\n{t} triangles\n\nPoints\n\n'.format(p = len(self.verts), t = len(self.faces)))
         for i in range(len(self.verts)):
@@ -111,17 +108,19 @@ class MC_System:
                                                         p2 = self.faces[i][1] + 1, p3 = self.faces[i][0] + 1)) 
         surf_file.close() 
 
+# superclass for marching cubes cell grid and corner grid
 class Grid:
     def __init__(self, lims, dims):
         self.lims = lims    # grid domain limits, [[xlo,ylo,zlo], [xhi,yhi,zhi]]
         self.dims = dims # [nx, ny, nz], no. of elements in each direction
         self.coords = [[],[],[]] # list of possible x,y, and z coordinates
         
-
+    # elements are stored in 1d arrays, so 3d indices (x,y,z) are fed here to get that 1d index
     def get_element(self,i,j,k):
         # i,j,k are x,y, and z indices
         return k*self.dims[1]*self.dims[0] + j*self.dims[0] + i
     
+    # get 3d coordinates (xky,z) from 1d position in array
     def get_indices(self,n):
         # a,b,c are x,y, and z indices
         c = int(n/(self.dims[1]*self.dims[0]))
@@ -131,14 +130,17 @@ class Grid:
         a = n
         return a,b,c
     
+    # determine in which element a point in space resides
     def point_association(self, p):
-        # associate with binary search in each dimension
+        # associate with binary search in each of 3 dimensions
         indices = []
+        epsilon = min(self.cell_length)*0.0001 # for floating point issues, 0.01% of cell length
         for i in range(3):
             c_high = self.dims[i]
             c_low = -1
             c_index = int((c_high + c_low)/2) # cell index
             found_bounds = [False, False] # lower and upper bounds of cell are/n't correct
+            last_c_index = -1
             while (not all(found_bounds)):
                 if (found_bounds[0]):
                     c_low = c_index
@@ -148,13 +150,23 @@ class Grid:
                     c_index = int((c_high + c_low)/2)
                 found_bounds = [False, False]
                 
-                # low and high are bounds of corner space for the 'c_index' point
+                # low and high are bounds of corner space for the 'c_index' element
                 low = self.coords[i][c_index] - self.cell_length[i]*0.5
                 high = low + self.cell_length[i]
                 if (p[i] >= low):
                     found_bounds[0] = True
                 if (p[i] < high):
                     found_bounds[1] = True
+                
+                # if c_index is being repeated, likely a floating point error for point being near an element boundary
+                if (last_c_index == c_index):
+                    if (abs(p[i] - low) < epsilon or abs(p[i] - high) < epsilon):
+                        found_bounds[0] = True
+                        found_bounds[1] = True
+                    else:
+                        print('For voxel position {p}:'.format(p=p[i]))
+                        raise Exception("Point unable to be found")
+                last_c_index = c_index
             indices.append(c_index)
             
         return indices # x,y,z indices
@@ -169,16 +181,15 @@ class MC_Corner:
         self.voxels = [] # voxel ids owned by corner
         
     
-
+# grid of corners, used to feed volume fractions to marching cubes function
 class Corner_Grid(Grid):
     def __init__(self, lims, dims):
         super().__init__(lims, dims)
         self.cell_length = (self.lims[1] - self.lims[0])/(self.dims - 1) # length of cell in [x,y,z] directions
-        self.corners = np.array([[[MC_Corner(self.lims[0] + self.cell_length*[i,j,k], i, j, k) for i in range(dims[0])] \
-                                                                                      for j in range(dims[1])] \
-                                                                                      for k in range(dims[2])])
+        self.corners = np.array([[[MC_Corner(self.lims[0] + self.cell_length*[i,j,k], i, j, k) \
+                                   for i in range(dims[0])] for j in range(dims[1])]  for k in range(dims[2])])
         self.corners = self.corners.flatten()
-        for i in range(3):
+        for i in range(3): # possible x,y,z corner coordinates
             self.coords[i] = list(np.linspace(self.lims[0][i], self.lims[1][i], self.dims[i]))
         
     def associate_voxels(self, voxels, voxel_size):    
@@ -190,7 +201,6 @@ class Corner_Grid(Grid):
              ind = self.point_association(v) # x,y,z corner indices 
              self.corners[self.get_element(ind[0],ind[1],ind[2])].voxels.append(v)
 
-
     def divide_volumes(self, voxel_size):
         max_unique_dist = 0.5*(self.cell_length - voxel_size)
         voxel_volume = voxel_size**3
@@ -201,12 +211,13 @@ class Corner_Grid(Grid):
                     dist = np.array([abs(x) for x in displ])
                     if all(dist <= max_unique_dist):
                         c.volume += voxel_volume
-                    else:
+                    else: # if voxel is not fully inside one corner's space, divide between corners
                         self.divide_voxel(c, v, voxel_size, max_unique_dist)
             
         for c in self.corners:
             c.volume /= np.prod(self.cell_length)
             
+    # divide voxel volume between multiple corners
     def divide_voxel(self, c, v, voxel_size, mud):
         diff = v - c.position # distance between voxel center and corner in each dimension
         min_pen_distance = mud # minimum distance in each dimension to penetrate into another corner
@@ -234,49 +245,49 @@ class Corner_Grid(Grid):
 # this is the unit cell of the marching cubes grid, with position, owned voxels,
 # and owned triangles
 class MC_Cell:
-    def __init__(self, c):
-        self.center = c # center of cell position
+    def __init__(self):
         self.voxels = [] # voxel positions owned by this cell
         self.v_inds = [] # voxel global indices owned by this cell
         self.triangles = [] # triangle vertex ids owned by this cell
         self.t_inds = [] # triangle global indices
                     
-    
+# this is where voxels and triangles are located and connected to each other
 class Cell_Grid(Grid):
     def __init__(self, lims, dims):
         super().__init__(lims, dims)
         self.cell_length = (self.lims[1] - self.lims[0])/self.dims # length of cell in [x,y,z] directions
-        self.cells = np.array([[[MC_Cell(self.lims[0] + 0.5*self.cell_length + self.cell_length*[i,j,k]) for i in range(dims[0])] \
-                                                                                      for j in range(dims[1])] \
-                                                                                      for k in range(dims[2])])
+        self.cells = np.array([[[MC_Cell() for i in range(dims[0])] for j in range(dims[1])] for k in range(dims[2])])
         self.cells = self.cells.flatten()  
         for i in range(3):
             self.coords[i] = list(np.linspace(self.lims[0][i] + 0.5*self.cell_length[i], \
                                               self.lims[1][i] - 0.5*self.cell_length[i], self.dims[i]))
-    
+    # associate voxels to cells
     def associate_voxels(self, voxels):
         for i in range(len(voxels)):
              ind = self.point_association(voxels[i]) # x,y,z corner indices 
              self.cells[self.get_element(ind[0],ind[1],ind[2])].voxels.append(voxels[i])
              self.cells[self.get_element(ind[0],ind[1],ind[2])].v_inds.append(i)
-
+    
+    # associate triangles to cells
     def associate_triangles(self, verts, faces):
         for i in range(len(faces)):
             centroid = np.average(verts[faces[i][:]], axis=0)
             ind = self.point_association(centroid)
             self.cells[self.get_element(ind[0],ind[1],ind[2])].triangles.append(faces[i])
             self.cells[self.get_element(ind[0],ind[1],ind[2])].t_inds.append(i)
-            
+      
+    # associate each voxel to 0 or 1 triangles, return this list
     def voxels_to_triangles(self, verts, voxels):
         triangles = np.ones(len(voxels))*-1
         for c in self.cells:
-            if len(c.triangles) < 1:
+            if len(c.triangles) < 1: # if no triangles in cell, don't assign voxels in cell to a triangle
                 continue
-            elif (len(c.triangles) == 1):
+            elif (len(c.triangles) == 1): # if only one triangle, assign all voxels in cell to it
                 for i in range(len(c.v_inds)):
                     triangles[c.v_inds[i]] = c.t_inds[0] + 1 # increment by 1 because SPARTA triangle ids start from 1
-            else:
-                for i in range(len(c.voxels)):
+            else: 
+                # if multiple triangles, choose for each voxel the triangle with the closest centroid
+                for i in range(len(c.voxels)): 
                     vt_distances = []
                     for f in c.triangles:
                         centroid = np.average(verts[f[:]], axis=0)
@@ -289,166 +300,13 @@ class Cell_Grid(Grid):
 
 """
 To-do
-- parallelize
-- ADD COMMENTS
-- return triangle list
+- avoid search for triangle-to-cell (Vijay)
+- implement parallelization (Luis)
+- interface with sparta (Vijay)
+
+- find voxels for 0-voxel triangles
+- test triangle list and generated surface
 - review warnings in compilation
 - set up testing suite for surface quality (vox inside and surface area) vox2triangle quality and MC robustness
+- tif input allowed
 """
-
-
-
-"""
-# grid data: cells, corners, triangles, and vertices
-class MC_Grid:
-    def __init__(self, lims, ncells):
-        self.lims = lims    # grid domain limits, [[xlo,ylo,zlo], [xhi,yhi,zhi]]
-        self.ncells = ncells # [nx, ny, nz], no. of cells in each direction
-        self.cell_length = (self.lims[1] - self.lims[0])/self.ncells # length of cell in [x,y,z] directions
-        self.ncorners = self.ncells + 1 # no. of corners in each direction
-        
-        # generate corners, start from lower limits, increment by cell lengths in each direction
-        p = self.lims[0]
-        nc = self.ncorners
-        cl = self.cell_length
-        self.corners = np.array([[[MC_Corner(p + cl*[i,j,k]) for i in range(nc[0])] for j in range(nc[1])] for k in range(nc[2])])
-        self.corner_coords = np.array([[(p[i] + cl[i]*j) for j in range(nc[i])] for i in range(3)])
-        self.corner_volumes = np.asarray([[[0.0]*self.ncorners[0]]*self.ncorners[1]]*self.ncorners[2])
-        
-        cell_func = lambda x : MC_Cell(x.position, x.position + cl)
-        np_cell_func = np.vectorize(cell_func)
-        self.cells = np_cell_func(self.corners)
-        for i in range(3):
-            self.cells = np.delete(self.cells, -1, i)
-        
-
-class MC_Surface:
-    def __init__(self):
-        self.verts = [] # list of vertices, each defined by [x,y,z] position
-        self.faces = [] # list of triangles, each defined by [v1, v2, v3] vertices
-        self.tri_cells = [] # z,y,x indices for owning cell of face
-    
-
-              
-# this is where all the magic happens, basically everything else is owned by
-# this class
-class MC_System:
-    
-    
-    def __init__(self, lims, ncells, voxel_size, voxels):
-
-        # generate voxel objects in grid
-        self.voxels = np.array([Voxel(pos[0], pos[1], pos[2]) for pos in voxels])
-    
-        # create surface, associate between elements, write SPARTA mesh file
-        self.associate_voxels() # associate voxels to cells and corners, divide volumes
-        self.create_surface() # execute marching cubes on processed grid
-        self.transform_mesh() # re-center and scale surface to actual coordinates
-        self.associate_triangles() # associate voxels to triangles
-        self.mesh.write_surface() # write SPARTA compliant surface file to disk
-
-            
-    def associate_voxels(self):
-        
-        for i in range(len(self.voxels)):
-            # associate voxel to owning cell with binary search in each dimension
-            p = self.voxels[i].position
-            cell_indices = self.find_cell(p)
-            self.voxels[i].cell = cell_indices # z,y,x indices
-            self.cells[cell_indices[0]][cell_indices[1]][cell_indices[2]].voxels.append(i)
-            
-            # associate voxel to owning corner
-            cell_center = self.cells[cell_indices[0]][cell_indices[1]][cell_indices[2]].get_center()
-            diff = p - cell_center
-            booleize = lambda x : 1 if x >= 0 else 0
-            np_booleize = np.vectorize(booleize)
-            diff_bool = np.flip(np_booleize(diff))
-            corner_indices = cell_indices + diff_bool # z,y,x indices
-            self.voxels[i].corner = corner_indices
-            self.corners[corner_indices[0]][corner_indices[1]][corner_indices[2]].voxels.append(i)
-            
-            # divide volumes between corners
-            pc = self.corners[corner_indices[0]][corner_indices[1]][corner_indices[2]].position
-            diff = p - pc # distance in each dimension from owned corner
-            min_pen_distance = 0.5*(self.cell_length - self.voxel_size)
-            
-            penetration = np.array([0,0,0]) # penetration distance in x,y,z directions
-            pen_flag = np.array([0,0,0])   # flag for penetration in directions
-            for i in range(3):
-                potential_pen = abs(diff[i]) - min_pen_distance[i]
-                if (potential_pen > 0):
-                    penetration[i] = potential_pen
-                    pen_flag[i] = 1 if diff[i] > 0 else -1
-            pen_flag = np.flip(pen_flag) # flags in z,y,x direction
-            
-            x_vol = penetration[0]*(self.voxel_size - penetration[1])*(self.voxel_size - penetration[2])
-            y_vol = penetration[1]*(self.voxel_size - penetration[0])*(self.voxel_size - penetration[2])
-            z_vol = penetration[2]*(self.voxel_size - penetration[1])*(self.voxel_size - penetration[1])
-            xy_vol = penetration[0]*penetration[1]*(self.voxel_size - penetration[2])
-            xz_vol = penetration[0]*penetration[2]*(self.voxel_size - penetration[1])
-            yz_vol = penetration[1]*penetration[2]*(self.voxel_size - penetration[0])
-            xyz_vol = np.prod(penetration)
-            
-            self.corners[corner_indices[0]][corner_indices[1]][corner_indices[2]].volume += self.voxel_size**3 - x_vol - y_vol - z_vol - \
-                                                                                             xy_vol - xz_vol - yz_vol - xyz_vol
-            self.corners[corner_indices[0]][corner_indices[1]][corner_indices[2] + pen_flag[2]].volume += x_vol
-            self.corners[corner_indices[0]][corner_indices[1] + pen_flag[1]][corner_indices[2]].volume += y_vol
-            self.corners[corner_indices[0] + pen_flag[0]][corner_indices[1]][corner_indices[2]].volume += z_vol
-            self.corners[corner_indices[0]][corner_indices[1] + pen_flag[1]][corner_indices[2] + pen_flag[2]].volume += xy_vol
-            self.corners[corner_indices[0] + pen_flag[0]][corner_indices[1]][corner_indices[2] + pen_flag[2]].volume += xz_vol
-            self.corners[corner_indices[0] + pen_flag[0]][corner_indices[1] + pen_flag[1]][corner_indices[2]].volume += yz_vol
-            self.corners[corner_indices[0] + pen_flag[0]][corner_indices[1] + pen_flag[1]][corner_indices[2] + pen_flag[2]].volume += xyz_vol
-         
-        # scale voxel volumes assigned to each corner as a fraction of cell volume
-        for k in range(self.ncorners[2]):
-            for j in range(self.ncorners[1]):
-                for i in range(self.ncorners[0]):
-                    self.corners[k][j][i].volume /= np.prod(self.cell_length)
-                    self.corner_volumes[k][j][i] = self.corners[k][j][i].volume
-                    
-
-    
-  
-    def associate_triangles(self):
-        m = self.mesh 
-        m.tri_cells = np.ones(m.faces.shape)*-1 # z,y,x indices for owning cell of face
-        
-        # associate faces to cells
-        for i in range(len(m.faces)):
-            avg_coords = np.average(m.verts[m.faces[i,:]], axis=0) # average all vertices of current triangle
-            cell_indices = self.find_cell(avg_coords)
-            m.tri_cells[i] = cell_indices
-            self.cells[cell_indices[0]][cell_indices[1]][cell_indices[2]].triangles.append(i)
-            
-        # associate voxels to faces
-        for k in range(self.ncells[2]):
-            for j in range(self.ncells[1]):
-                for i in range(self.ncells[0]):
-                    c = self.cells[k][j][i]
-                    if (len(c.triangles) < 1):
-                        continue
-                    elif (len(c.triangles) == 1):
-                        for v in range(len(c.voxels)):
-                            self.voxels[c.voxels[v]].triangle = c.triangles[0]
-                    else:
-                        for v in range(len(c.voxels)):
-                            vt_distances = [] # distances from the voxel to that face
-                            avail_triangles = [] # triangle indices
-                            for f in range(len(c.triangles)):
-                                avail_triangles.append(c.triangles[f])
-                                ct = m.faces[c.triangles[f]] # current triangle's point indices
-                                tri_points = np.array([m.verts[x] for x in ct]) # ct's actual point coordinates
-                                centroid = np.average(tri_points, axis=0)
-                                
-                                dist = np.linalg.norm(centroid - self.voxels[c.voxels[v]].position)
-                                vt_distances.append(dist)
-                            chosen_tri = vt_distances.index(min(vt_distances))
-                            self.voxels[c.voxels[v]].triangle = chosen_tri
-                                
-                        
-                            PQ = tri_points[2] - tri_points[0]
-                            PR = tri_points[1] - tri_points[0]
-                            n = np.cross(PR, PQ) # get INWARD unit normal of triangle
-                            n = n/np.linalg.norm(n)
-                            
- """
