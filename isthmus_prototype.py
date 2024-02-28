@@ -1,12 +1,13 @@
 import numpy as np
 from Marching_Cubes import marching_cubes, mesh_surface_area
+import time 
 
 # program assumes minimal overlap of pixels
 
 # this is where all the magic happens, basically everything else is owned by
 # this class
 class MC_System:  
-    def __init__(self, lims, ncells, voxel_size, voxels, name):
+    def __init__(self, lims, ncells, voxel_size, voxels, name, direct=False):
         # check validity of grid being created and voxel data
         self.check_grid(lims, ncells)
         self.check_voxels(lims, ncells, voxel_size, np.transpose(voxels))
@@ -27,8 +28,9 @@ class MC_System:
         # associate voxels to triangles by way of the containing cell
         self.cell_grid = Cell_Grid(lims, ncells) 
         self.cell_grid.associate_voxels(self.voxels) # associate voxels to cells
-        self.cell_grid.associate_triangles(self.verts, self.faces) # associate triangles to cells
+        self.cell_tri_time = self.cell_grid.associate_triangles(self.verts, self.faces, direct) # associate triangles to cells
         self.voxel_triangle_ids = self.cell_grid.voxels_to_triangles(self.verts, self.voxels) # associate voxels to triangle in same cell
+        
         
     # check validity of grid limits and number of cells
     def check_grid(self, lims, ncells):
@@ -72,7 +74,7 @@ class MC_System:
         for n in range(len(cg.corners)):
             a,b,c = cg.get_indices(n)
             corner_volumes[c][b][a] = cg.corners[n].volume # marching cubes requires [z,y,x] order
-        
+
         verts, faces, normals, values = marching_cubes( \
                volume= corner_volumes, level=0.5, \
                gradient_direction='descent', \
@@ -269,13 +271,22 @@ class Cell_Grid(Grid):
              self.cells[self.get_element(ind[0],ind[1],ind[2])].v_inds.append(i)
     
     # associate triangles to cells
-    def associate_triangles(self, verts, faces):
+    def associate_triangles(self, verts, faces, direct=False):
+        # binary search method
+        if (direct == False):
+            print('Binary search')
+            fun = lambda centroid : self.point_association(centroid)
+        else:
+            print('Direct association')
+            fun = lambda centroid : ((centroid - self.lims[0])/self.cell_length).astype(int) # cell indices [x,y,z]
+        t = time.time()
         for i in range(len(faces)):
             centroid = np.average(verts[faces[i][:]], axis=0)
-            ind = self.point_association(centroid)
+            ind = fun(centroid)
             self.cells[self.get_element(ind[0],ind[1],ind[2])].triangles.append(faces[i])
             self.cells[self.get_element(ind[0],ind[1],ind[2])].t_inds.append(i)
-      
+        return time.time() - t
+        
     # associate each voxel to 0 or 1 triangles, return this list
     def voxels_to_triangles(self, verts, voxels):
         triangles = np.ones(len(voxels))*-1
@@ -300,8 +311,7 @@ class Cell_Grid(Grid):
 
 """
 To-do
-- avoid search for triangle-to-cell (Vijay)
-- implement parallelization (Luis)
+- implement parallelization (Luis), including removal of duplicate geometry
 - interface with sparta (Vijay)
 
 - find voxels for 0-voxel triangles

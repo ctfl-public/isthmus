@@ -6,7 +6,6 @@ Main skeleton for isthmus
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from time import time
 from isthmus_prototype import MC_System
 
 def generate_test_voxels(v_size, ns, lims):
@@ -71,97 +70,68 @@ def plot_results(verts, faces, lo, hi, proj=False):
 np.random.seed(199)
 ns = 1
 
-"""
 lo = [-2.5, -2.5, -2.5]
 hi = [2.5, 2.5, 2.5]
 lims = np.array([lo, hi])
-ncells = np.array([50,50,50])
-
-
-mc_time = []
-nvox = []
-
-v_size = [0.1,0.05,0.04, 0.035, 0.032]
-
-
-for v in v_size:
-    xs, ys, zs = make_sphere(0,0,0,1, v)
-    nvox.append(len(xs))
-    
-    voxels = np.transpose(np.array([xs, ys, zs]))
-    name = 'vox2surf.' + str(len(voxels)) + '.surf' # name of outputted surface file
-    
-    # create triangle mesh and assign voxels to triangles
-    t1 = time()
-    mc_system = MC_System(lims, ncells, v, voxels, name)
-    voxel_triangle_ids = mc_system.voxel_triangle_ids.astype(int)
-    mc_time.append(time() - t1)
-    
-    # create array of triangle ids  
-    f = open('solid.' + str(len(voxels)) + '.tris', 'w')
-    f.write('x,y,z,t\n')
-    for i in range(len(voxels)):
-        f.write('{x},{y},{z},{t}\n'.format(x = voxels[i][0], y = voxels[i][1], z = voxels[i][2], t = voxel_triangle_ids[i]))
-    f.close()
-    
-    print('done...')
-    
-    plot_results(mc_system.verts, mc_system.faces, lo, hi)
-
-
-
-nvox = np.array(nvox)
-mc_time = np.array(mc_time)
-plt.figure()
-a, b = np.polyfit(nvox, mc_time, 1)
-plt.plot(nvox, a*nvox + b, color='blue', label='Best Fit Line')
-plt.scatter(nvox, mc_time, color='red', label='Isthmus Output')
-plt.xlabel('Number of voxels')
-plt.ylabel('Time for Marching Cubes System')
-plt.title('50x50x50 MC Grid')
-plt.legend()
-plt.grid()
-"""
-
-lo = [-2.5, -2.5, -2.5]
-hi = [2.5, 2.5, 2.5]
-lims = np.array([lo, hi])
-ncells = np.array([[10,10,10],[20,20,20],[30,30,30]])
-
+noc = [4,10,15,20,30,40,50,60,70]
+ncells = []
+for i in range(len(noc)):
+    ncells.append([noc[i]]*3)
+ncells = np.array(ncells)
 
 mc_time = []
-nc = []
+nf = [] # number of faces
+systems = []
 
 v_size = 0.045
 
+direct = False
+for i in range(2):
+    mc_time.append([])
+    nf.append([])
+    systems.append([])
+    for c in ncells:
+        xs, ys, zs = make_sphere(0,0,0,1, v_size)
+        
+        voxels = np.transpose(np.array([xs, ys, zs]))
+        name = 'vox2surf.' + str(len(voxels)) + '.surf' # name of outputted surface file
+        
+        # create triangle mesh and assign voxels to triangles
+        mc_system = MC_System(lims, c, v_size, voxels, name, direct)
+        voxel_triangle_ids = mc_system.voxel_triangle_ids.astype(int)
+        mc_time[-1].append(mc_system.cell_tri_time)
+        nf[-1].append(len(mc_system.faces))
+        systems[-1].append(mc_system)
+        print('done...')
+        #plot_results(mc_system.verts, mc_system.faces, lo, hi)
+    print()
+    direct = True
 
-for c in ncells:
-    xs, ys, zs = make_sphere(0,0,0,1, v_size)
-    nc.append(np.prod(np.array(c)))
-    
-    voxels = np.transpose(np.array([xs, ys, zs]))
-    name = 'vox2surf.' + str(len(voxels)) + '.surf' # name of outputted surface file
-    
-    # create triangle mesh and assign voxels to triangles
-    t1 = time()
-    mc_system = MC_System(lims, c, v_size, voxels, name)
-    voxel_triangle_ids = mc_system.voxel_triangle_ids.astype(int)
-    mc_time.append(time() - t1)
-    
-    print('done...')
-    
-    plot_results(mc_system.verts, mc_system.faces, lo, hi)
+systems = np.transpose(np.array(systems))
 
+for i in range(len(systems)):
+    sys0 = systems[i][0].cell_grid.cells
+    sys1 = systems[i][1].cell_grid.cells
+    for j in range(len(sys0)):
+        tri0 = np.array(sys0[j].triangles)
+        tri1 = np.array(sys1[j].triangles)
+        if ((len(tri0) == 0 or len(tri1) == 0) and len(tri1) != len(tri0)):
+            raise Exception('algorithms not equivalent')
+        elif (len(tri0) == 0 and len(tri1) == 0):
+            continue
+        elif (not (tri0 == tri1).all()):
+            raise Exception('algorithms not equivalent')
 
-
-nc = np.array(nc)
+nf = np.array(nf)
 mc_time = np.array(mc_time)
 plt.figure()
-a, b = np.polyfit(nc, mc_time, 1)
-plt.plot(nc, a*nc + b, color='blue', label='Best Fit Line')
-plt.scatter(nc, mc_time, color='red', label='Isthmus Output')
-plt.xlabel('Number of cells')
-plt.ylabel('Time for Marching Cubes System')
-plt.title(str(len(voxels)) + ' MC Grid')
+cl = ['red', 'blue']
+lab = ['Binary', 'Direct']
+for i in range(2):
+    plt.scatter(nf[i], mc_time[i], color=cl[i], label=lab[i])
+plt.xlabel('Number of triangles')
+plt.ylabel('Time for MC System [s]')
+plt.title(str(len(voxels)) + ' voxel system')
 plt.legend()
 plt.grid()
+plt.savefig('alg_compare_tri',dpi=400)
