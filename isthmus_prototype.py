@@ -1,13 +1,12 @@
 import numpy as np
 from Marching_Cubes import marching_cubes, mesh_surface_area
-import time 
 
 # program assumes minimal overlap of pixels
 
 # this is where all the magic happens, basically everything else is owned by
 # this class
 class MC_System:  
-    def __init__(self, lims, ncells, voxel_size, voxels, name, direct=False):
+    def __init__(self, lims, ncells, voxel_size, voxels, name):
         # check validity of grid being created and voxel data
         self.check_grid(lims, ncells)
         self.check_voxels(lims, ncells, voxel_size, np.transpose(voxels))
@@ -28,7 +27,7 @@ class MC_System:
         # associate voxels to triangles by way of the containing cell
         self.cell_grid = Cell_Grid(lims, ncells) 
         self.cell_grid.associate_voxels(self.voxels) # associate voxels to cells
-        self.cell_tri_time = self.cell_grid.associate_triangles(self.verts, self.faces, direct) # associate triangles to cells
+        self.cell_tri_time = self.cell_grid.associate_triangles(self.verts, self.faces) # associate triangles to cells
         self.voxel_triangle_ids = self.cell_grid.voxels_to_triangles(self.verts, self.voxels) # associate voxels to triangle in same cell
         
         
@@ -79,7 +78,10 @@ class MC_System:
                volume= corner_volumes, level=0.5, \
                gradient_direction='descent', \
                allow_degenerate=False)
-
+            
+        verts = np.fliplr(verts) # marching_cubes() outputs in z,y,x order
+        faces = np.fliplr(faces) # so SPARTA puts particles outside the surface
+        
         return verts, faces
 
     # marching_cubes() gives origin of (0,0,0) and cell size of 1; this rescales the surface properly
@@ -271,21 +273,12 @@ class Cell_Grid(Grid):
              self.cells[self.get_element(ind[0],ind[1],ind[2])].v_inds.append(i)
     
     # associate triangles to cells
-    def associate_triangles(self, verts, faces, direct=False):
-        # binary search method
-        if (direct == False):
-            print('Binary search')
-            fun = lambda centroid : self.point_association(centroid)
-        else:
-            print('Direct association')
-            fun = lambda centroid : ((centroid - self.lims[0])/self.cell_length).astype(int) # cell indices [x,y,z]
-        t = time.time()
+    def associate_triangles(self, verts, faces):
         for i in range(len(faces)):
             centroid = np.average(verts[faces[i][:]], axis=0)
-            ind = fun(centroid)
+            ind = ((centroid - self.lims[0])/self.cell_length).astype(int) # cell indices [x,y,z]
             self.cells[self.get_element(ind[0],ind[1],ind[2])].triangles.append(faces[i])
             self.cells[self.get_element(ind[0],ind[1],ind[2])].t_inds.append(i)
-        return time.time() - t
         
     # associate each voxel to 0 or 1 triangles, return this list
     def voxels_to_triangles(self, verts, voxels):
@@ -312,8 +305,8 @@ class Cell_Grid(Grid):
 """
 To-do
 - implement parallelization (Luis), including removal of duplicate geometry
-- interface with sparta (Vijay)
 
+- interface with sparta
 - find voxels for 0-voxel triangles
 - test triangle list and generated surface
 - review warnings in compilation
