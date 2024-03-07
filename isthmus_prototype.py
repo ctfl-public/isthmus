@@ -1,12 +1,13 @@
 import numpy as np
 from Marching_Cubes import marching_cubes, mesh_surface_area
+import imageio
 
 # program assumes minimal overlap of pixels
 
 # this is where all the magic happens, basically everything else is owned by
 # this class
 class MC_System:  
-    def __init__(self, lims, ncells, voxel_size, voxels, name):
+    def __init__(self, lims, ncells, voxel_size, voxels, name, cell_tri=False):
         # check validity of grid being created and voxel data
         self.check_grid(lims, ncells)
         self.check_voxels(lims, ncells, voxel_size, np.transpose(voxels))
@@ -27,9 +28,12 @@ class MC_System:
         # associate voxels to triangles by way of the containing cell
         self.cell_grid = Cell_Grid(lims, ncells) 
         self.cell_grid.associate_voxels(self.voxels) # associate voxels to cells
-        self.cell_tri_time = self.cell_grid.associate_triangles(self.verts, self.faces) # associate triangles to cells
+        self.tri_cell_ids = self.cell_grid.associate_triangles(self.verts, self.faces) # associate triangles to cells
+        if cell_tri:
+            self.write_triangle_cells()
         self.voxel_triangle_ids = self.cell_grid.voxels_to_triangles(self.verts, self.voxels) # associate voxels to triangle in same cell
-        
+        self.write_voxel_triangles()
+
         
     # check validity of grid limits and number of cells
     def check_grid(self, lims, ncells):
@@ -111,6 +115,24 @@ class MC_System:
             surf_file.write('{b} {p1} {p2} {p3}\n'.format(b = i + 1, p1 = self.faces[i][2] + 1, \
                                                         p2 = self.faces[i][1] + 1, p3 = self.faces[i][0] + 1)) 
         surf_file.close() 
+        
+    def write_voxel_triangles(self):
+        f = open('voxel_triangles.dat', 'w')
+        f.write('vox_idx,tri_id\n') # voxel index, triangle id
+        for i in range(len(self.triangle_ids)):
+            if self.triangle_ids[i] != -1:
+                f.write('{v_idx},{tri_id}\n'.format(v_idx= i, tri_id= self.triangle_ids[i]))
+        f.close()
+
+    def write_triangle_cells(self):
+        gr = self.cell_grid
+        f = open('triangle_cells.dat', 'w')
+        f.write('tri,n,xc,yc,zc\n') # triangle id, cell integer id, cell x index, y index, and z index
+        for i in range(len(self.tri_cell_ids)):
+            cell = self.triangle_cell_ids[i]
+            x,y,z = gr.get_indices(cell)
+            f.write('{tri},{n},{xc},{yc},{zc}\n'.format(tri= i + 1, n= cell, xc= x, yc= y, zc= z))
+        f.close()
 
 # superclass for marching cubes cell grid and corner grid
 class Grid:
@@ -274,11 +296,15 @@ class Cell_Grid(Grid):
     
     # associate triangles to cells
     def associate_triangles(self, verts, faces):
+        tri_cell_ids = np.ones(len(self.faces))*-1
         for i in range(len(faces)):
             centroid = np.average(verts[faces[i][:]], axis=0)
             ind = ((centroid - self.lims[0])/self.cell_length).astype(int) # cell indices [x,y,z]
-            self.cells[self.get_element(ind[0],ind[1],ind[2])].triangles.append(faces[i])
-            self.cells[self.get_element(ind[0],ind[1],ind[2])].t_inds.append(i)
+            n = self.get_element(ind[0],ind[1],ind[2])
+            self.cells[n].triangles.append(faces[i])
+            self.cells[n].t_inds.append(i)
+            tri_cell_ids[i] = n
+        return tri_cell_ids
         
     # associate each voxel to 0 or 1 triangles, return this list
     def voxels_to_triangles(self, verts, voxels):
@@ -304,12 +330,13 @@ class Cell_Grid(Grid):
 
 """
 To-do
-- implement parallelization (Luis), including removal of duplicate geometry
+1. cell-triangle file writing 
+2. tif input allowed (test and push)
+3. Implement parallelization (Luis), including removal of duplicate geometry
 
 - interface with sparta
 - find voxels for 0-voxel triangles
-- test triangle list and generated surface
+- test program
 - review warnings in compilation
 - set up testing suite for surface quality (vox inside and surface area) vox2triangle quality and MC robustness
-- tif input allowed
 """
