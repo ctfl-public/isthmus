@@ -20,13 +20,15 @@ class MC_System:
         self.corner_grid = Corner_Grid(lims, ncells + 1)       
         self.corner_grid.associate_voxels(self.voxels, self.voxel_size) # assign voxels to owning corner and divide volumes        
         
-        # execute marching cubes and write SPARTA compliant surface
+        # execute marching cubes and scale/translate surface
         self.verts, self.faces = self.create_surface()
-        self.transform_surface()  
+        self.transform_surface()
+        
+        # write SPARTA-compliant surface
+        self.cell_grid = Cell_Grid(lims, ncells)
         self.write_surface(name)
         
         # associate voxels to triangles by way of the containing cell
-        self.cell_grid = Cell_Grid(lims, ncells) 
         self.cell_grid.associate_voxels(self.voxels) # associate voxels to cells
         self.tri_cell_ids = self.cell_grid.associate_triangles(self.verts, self.faces) # associate triangles to cells
         if cell_tri:
@@ -84,7 +86,6 @@ class MC_System:
                allow_degenerate=False)
             
         verts = np.fliplr(verts) # marching_cubes() outputs in z,y,x order
-        faces = np.fliplr(faces) # so SPARTA puts particles outside the surface
         
         return verts, faces
 
@@ -100,6 +101,7 @@ class MC_System:
         translations = np.array([cg.lims[0]]*len(self.verts))
         self.verts += translations
         
+    
     # write surface of triangles to disk, the argument is the name of the file
     def write_surface(self, name):
         surf_file = open(name, "w")
@@ -112,16 +114,16 @@ class MC_System:
         # order of points is flipped so sparta marks inside and outside correctly (DON'T INVERT IN INPUT SCRIPT)
         surf_file.write('\n\nTriangles\n\n')
         for i in range(len(self.faces)):
-            surf_file.write('{b} {p1} {p2} {p3}\n'.format(b = i + 1, p1 = self.faces[i][2] + 1, \
-                                                        p2 = self.faces[i][1] + 1, p3 = self.faces[i][0] + 1)) 
+            surf_file.write('{b} {p1} {p2} {p3}\n'.format(b = i + 1, p1 = self.faces[i][0] + 1, \
+                                                        p2 = self.faces[i][1] + 1, p3 = self.faces[i][2] + 1)) 
         surf_file.close() 
         
     def write_voxel_triangles(self):
         f = open('voxel_triangles.dat', 'w')
         f.write('vox_idx,tri_id\n') # voxel index, triangle id
-        for i in range(len(self.triangle_ids)):
-            if self.triangle_ids[i] != -1:
-                f.write('{v_idx},{tri_id}\n'.format(v_idx= i, tri_id= self.triangle_ids[i]))
+        for i in range(len(self.voxel_triangle_ids)):
+            if (self.voxel_triangle_ids[i] != -1): # if voxel is assigned to a triangle
+                f.write('{v_idx},{tri_id}\n'.format(v_idx= i, tri_id= int(self.voxel_triangle_ids[i])))
         f.close()
 
     def write_triangle_cells(self):
@@ -129,10 +131,13 @@ class MC_System:
         f = open('triangle_cells.dat', 'w')
         f.write('tri,n,xc,yc,zc\n') # triangle id, cell integer id, cell x index, y index, and z index
         for i in range(len(self.tri_cell_ids)):
-            cell = self.triangle_cell_ids[i]
+            cell = self.tri_cell_ids[i]
             x,y,z = gr.get_indices(cell)
-            f.write('{tri},{n},{xc},{yc},{zc}\n'.format(tri= i + 1, n= cell, xc= x, yc= y, zc= z))
+            f.write('{tri},{n},{xc},{yc},{zc}\n'.format(tri= i + 1, n= int(cell), xc= int(x), yc= int(y), zc= int(z)))
         f.close()
+    
+    def get_surface_area(self):
+        return mesh_surface_area(self.verts, self.faces)
 
 # superclass for marching cubes cell grid and corner grid
 class Grid:
@@ -274,8 +279,12 @@ class MC_Cell:
     def __init__(self):
         self.voxels = [] # voxel positions owned by this cell
         self.v_inds = [] # voxel global indices owned by this cell
+        
         self.triangles = [] # triangle vertex ids owned by this cell
         self.t_inds = [] # triangle global indices
+        
+        self.vertices = [] # vertices of triangles owned by this cell
+        self.vert_inds = [] # vertex global indices
                     
 # this is where voxels and triangles are located and connected to each other
 class Cell_Grid(Grid):
@@ -294,9 +303,19 @@ class Cell_Grid(Grid):
              self.cells[self.get_element(ind[0],ind[1],ind[2])].voxels.append(voxels[i])
              self.cells[self.get_element(ind[0],ind[1],ind[2])].v_inds.append(i)
     
+    # associate points to cells
+    def associate_points(self, ps):
+        i = 0
+        for p in ps:
+            ind = ((p - self.lims[0])/self.cell_length).astype(int) # cell indices [x,y,z]
+            n = self.get_element(ind[0],ind[1],ind[2])
+            self.cells[n].vertices.append(p)
+            self.cells[n].vert_inds.append(i)
+            i += 1
+         
     # associate triangles to cells
     def associate_triangles(self, verts, faces):
-        tri_cell_ids = np.ones(len(self.faces))*-1
+        tri_cell_ids = np.ones(len(faces))*-1
         for i in range(len(faces)):
             centroid = np.average(verts[faces[i][:]], axis=0)
             ind = ((centroid - self.lims[0])/self.cell_length).astype(int) # cell indices [x,y,z]
@@ -327,16 +346,17 @@ class Cell_Grid(Grid):
                     triangles[c.v_inds[i]] = c.t_inds[chosen_tri] + 1
         
         return triangles
-
+    
 """
 To-do
-1. cell-triangle file writing 
-2. tif input allowed (test and push)
-3. Implement parallelization (Luis), including removal of duplicate geometry
+1. clean and push to main
+2. testing suite for quality, unit tests; surface quality (vox inside and surface area) vox2triangle quality and MC robustness
+3. tif input allowed (test and push)
 
+- removal of duplicate geometry (?)
+- implement parallelization (Luis)
+- implement different voxel-triangle mapping procedures
 - interface with sparta
 - find voxels for 0-voxel triangles
-- test program
 - review warnings in compilation
-- set up testing suite for surface quality (vox inside and surface area) vox2triangle quality and MC robustness
 """

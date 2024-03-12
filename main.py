@@ -7,8 +7,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from isthmus_prototype import MC_System
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from matplotlib.ticker import FormatStrFormatter
-
 
 def plot_results(verts, faces, lo, hi):
     tris = Poly3DCollection(verts[faces])
@@ -17,21 +15,9 @@ def plot_results(verts, faces, lo, hi):
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
     ax.add_collection3d(tris)
-    """
     ax.set_xlim(lo[0], hi[0])
     ax.set_ylim(lo[1], hi[1])
     ax.set_zlim(lo[2], hi[2]) 
-    """
-    plt.axis('scaled')
-    ax.set_xlim(slo, shi)
-    ax.set_ylim(slo, shi)
-    ax.set_zlim(slo, shi)
-    ax.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-    ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-    ax.zaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-    ax.set_xticks(ticks=ts)
-    ax.set_yticks(ticks=ts)
-    ax.set_zticks(ticks=ts)
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     ax.set_zlabel('z')
@@ -60,56 +46,19 @@ def make_ellipsoid(v_size, lims):
     return np.array(voxs)
 
 # input
-lo = [0]*3
-hi = [5]*3
+lo = [0]*3                          # x,y,z limits at low
+hi = [5]*3                          # and high positions
 lims = np.array([lo, hi])
-ncells = np.array([40,40,40])
-v_size = 0.08
-name = 'vox2surf.surf' # name of outputted surface file
-# end inputs
-
-voxs = make_ellipsoid(v_size, lims)
-
-plot_voxs = np.transpose(voxs)
-fig = plt.figure()
-ax = fig.add_subplot(projection='3d')
-#ax.view_init(elev=0, azim=0, roll=0)
-ax.scatter(plot_voxs[0], plot_voxs[1], plot_voxs[2], marker='s', color='blue', edgecolors='black')
-"""
-ax.set_xlim(lo[0], hi[0])
-ax.set_ylim(lo[1], hi[1])
-ax.set_zlim(lo[2], hi[2]) 
-"""
-slo = 1.5
-shi = 3.5
-ts = [1.5,2.0,2.5,3.0,3.5]
-plt.axis('scaled')
-ax.set_xlim(slo, shi)
-ax.set_ylim(slo, shi)
-ax.set_zlim(slo, shi)
-ax.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-ax.zaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-ax.set_xticks(ticks=ts)
-ax.set_yticks(ticks=ts)
-ax.set_zticks(ticks=ts)
-ax.set_xlabel('x')
-ax.set_ylabel('y')
-ax.set_zlabel('z')
-plt.savefig('pixels', dpi=400)
-plt.show()
+ncells = np.array([40,40,40])       # x,y,z numbers of cells
+v_size = 0.08                       # side length of voxel
+name = 'vox2surf.surf'              # name of outputted surface file
+voxs = make_ellipsoid(v_size, lims) # for n voxels, make nx3 array of [[x1,y1,z1],[x2,y2,z2],...,[xn,yn,zn]]
+# end input
 
 # create triangle mesh and assign voxels to triangles
-mc_system = MC_System(lims, ncells, v_size, voxs, name)
-voxel_triangle_ids = mc_system.voxel_triangle_ids.astype(int)
+mc_system = MC_System(lims, ncells, v_size, voxs, name,cell_tri=True)
 plot_results(mc_system.verts, mc_system.faces, lo, hi)
 
-for i in range(40):
-    for j in range(40):
-        for k in range(40):
-            cu = mc_system.cell_grid.cells[mc_system.cell_grid.get_element(i, j, k)]
-            if len(cu.triangles):
-                print(str(cu.triangles) + ' , ' + str(cu.t_inds))
 
 """
 import imageio
