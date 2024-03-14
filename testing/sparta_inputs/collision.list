@@ -1,0 +1,12 @@
+# VSS collision model parameters for each species
+
+# diameter (m)
+# omega
+# tref
+# alpha
+# rotc1
+# rotc2
+# Bird C1
+# Bird C2
+
+N2   4.14E-10    0.74  273.15  1.0 28.497 91.5 9.1 220.0

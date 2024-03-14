@@ -1,0 +1,31 @@
+seed	    	    157291296
+units               si
+dimension   	    3
+
+global              fnum 1.0e17 gridcut 0.2
+boundary	    r r r
+create_box  	    -2.0 2.0 -2.0 2.0 -2.0 2.0
+create_grid         100 100 100
+
+balance_grid        rcb cell
+
+species		    ../sparta/couple_test/species.list N2
+mixture		    inflow N2 nrho 1.0e20 temp 150.0 trot 150.0 tvib 150.0 vstream 0 0 0 
+
+collide             vss all ../sparta/couple_test/collision.list relax constant
+collide_modify      rotate smooth vibrate discrete
+
+create_particles    inflow n 0
+fix                 in emit/face inflow xlo ylo yhi zlo zhi
+
+read_surf           vox2surf.surf particle check clip
+surf_collide	    1 diffuse 150.0 1.0
+surf_modify         all collide 1
+
+timestep 1e-9
+
+compute f surf all all fx n
+fix f ave/surf all 1 10 10 c_f[*] ave one
+dump f surf all 10 forces.dat id v1x v1y v1z v2x v2y v2z v3x v3y v3z f_f[*]
+run 10
+write_surf final.surf
