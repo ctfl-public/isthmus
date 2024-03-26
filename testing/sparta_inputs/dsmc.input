@@ -26,6 +26,6 @@ timestep 1e-9
 
 compute f surf all all fx n
 fix f ave/surf all 1 10 10 c_f[*] ave one
-dump f surf all 10 forces.dat id v1x v1y v1z v2x v2y v2z v3x v3y v3z f_f[*]
+dump f surf all 10 forces.dat.* id v1x v1y v1z v2x v2y v2z v3x v3y v3z f_f[*]
 run 10
 write_surf final.surf

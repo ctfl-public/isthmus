@@ -7,7 +7,7 @@ import imageio
 # this is where all the magic happens, basically everything else is owned by
 # this class
 class MC_System:  
-    def __init__(self, lims, ncells, voxel_size, voxels, name, cell_tri=False):
+    def __init__(self, lims, ncells, voxel_size, voxels, name):
         # check validity of grid being created and voxel data
         self.check_grid(lims, ncells)
         self.check_voxels(lims, ncells, voxel_size, np.transpose(voxels))
@@ -31,8 +31,6 @@ class MC_System:
         # associate voxels to triangles by way of the containing cell
         self.cell_grid.associate_voxels(self.voxels) # associate voxels to cells
         self.tri_cell_ids = self.cell_grid.associate_triangles(self.verts, self.faces) # associate triangles to cells
-        if cell_tri:
-            self.write_triangle_cells()
         self.voxel_triangle_ids = self.cell_grid.voxels_to_triangles(self.verts, self.voxels) # associate voxels to triangle in same cell
         self.write_voxel_triangles()
 
@@ -125,16 +123,6 @@ class MC_System:
         for i in range(len(self.voxel_triangle_ids)):
             if (self.voxel_triangle_ids[i] != -1): # if voxel is assigned to a triangle
                 f.write('{v_idx},{tri_id}\n'.format(v_idx= i, tri_id= int(self.voxel_triangle_ids[i])))
-        f.close()
-
-    def write_triangle_cells(self):
-        gr = self.cell_grid
-        f = open('triangle_cells.dat', 'w')
-        f.write('tri,n,xc,yc,zc\n') # triangle id, cell integer id, cell x index, y index, and z index
-        for i in range(len(self.tri_cell_ids)):
-            cell = self.tri_cell_ids[i]
-            x,y,z = gr.get_indices(cell)
-            f.write('{tri},{n},{xc},{yc},{zc}\n'.format(tri= i + 1, n= int(cell), xc= int(x), yc= int(y), zc= int(z)))
         f.close()
     
     def get_surface_area(self):
@@ -350,12 +338,10 @@ class Cell_Grid(Grid):
     
 """
 To-do
-1. testing suite for quality, unit tests; surface quality (vox inside and surface area) vox2triangle quality and MC robustness
-2. tif input allowed (test and push)
+1. tif input allowed (test and push)
 
-- removal of duplicate geometry (?)
 - implement parallelization
-- implement different voxel-triangle mapping procedures
+- implement different voxel-triangle mapping procedures (boundary/near-boundary voxels?)
 - interface with sparta
 - find voxels for 0-voxel triangles
 - review warnings in compilation
