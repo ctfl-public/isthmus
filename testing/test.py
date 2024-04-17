@@ -13,52 +13,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import trimesh
 import subprocess
 import os
- 
-# roughly, size is a 'half-length' for shapes
-
-class Ellipsoid():
-    def __init__(self, size):
-        self.a = 1*np.sqrt(size) # x dimension should be very thin .25
-        self.b = 1*np.sqrt(size)
-        self.c = 1*np.sqrt(size) # z dimension should be very long 1.5
-    
-    def is_voxel_valid(self,x,y,z):
-        return (x/self.a)**2 + (y/self.b)**2 + (z/self.c)**2 < 1
-    
-    def get_shape_area(self):
-        big_sum = (self.a*self.b)**1.6 + (self.a*self.c)**1.6 + (self.b*self.c)**1.6
-        return 4*np.pi*(big_sum/3)**(1/1.6) # surface area of ellipsoid
-    
-    def get_shape_volume(self):
-        return (4/3)*np.pi*self.a*self.b*self.c
-
-class Cylinder():
-    def __init__(self, size):
-        self.length = size*2
-        self.radius = self.length/6
-        
-    def is_voxel_valid(self,x,y,z):
-        return (x**2 + y**2 < self.radius**2 and abs(z) < self.length/2)
-    
-    def get_shape_area(self):
-        circle_sum = 2*np.pi*self.radius**2
-        return circle_sum + np.pi*2*self.radius*self.length # surface area of cylinder
-    
-    def get_shape_volume(self):
-        return self.length*np.pi*self.radius**2
-    
-class Cube():
-    def __init__(self, size):
-        self.hlength = size
-        
-    def is_voxel_valid(self,x,y,z):
-        return (abs(x) < self.hlength and abs(y) < self.hlength and abs(z) < self.hlength)
-        
-    def get_shape_area(self):
-        return 6*(self.hlength*2)**2
-    
-    def get_shape_volume(self):
-        return (self.size*2)**3
+from shape_types import Ellipsoid, Cylinder, Cube, make_shape
     
 
 def plot_results(verts, faces, lo, hi):
@@ -77,38 +32,10 @@ def plot_results(verts, faces, lo, hi):
     plt.savefig('test_geometry', dpi=400)
     plt.show()
 
-def make_shape(v_size, lims, size, shape):
-    voxs = []
-    diff = (lims[1] - lims[0])
-    nvox_1d = (diff/v_size).astype(int)
-    for i in range(3):
-        if (nvox_1d[i] % 2):
-            nvox_1d[i] += 1
-    nvox_1d = (nvox_1d/2 + 0.1).astype(int)
-    
-    if shape == 'ellipsoid':
-        s_obj = Ellipsoid(size)
-    elif shape == 'cylinder':
-        s_obj = Cylinder(size)
-    elif shape == 'cube':
-        s_obj = Cube(size)
-    else:
-        raise Exception('Invalid shape type given')
-    
-    for i in range(nvox_1d[0]*2):
-        x = -nvox_1d[0]*v_size + 0.5*v_size + i*v_size
-        for j in range(nvox_1d[1]*2):
-            y = -nvox_1d[1]*v_size + 0.5*v_size + j*v_size
-            for k in range(nvox_1d[2]*2):
-                z = -nvox_1d[2]*v_size + 0.5*v_size + k*v_size
-                if (s_obj.is_voxel_valid(x,y,z)):
-                    voxs.append([x,y,z])
-        
-    return np.array(voxs), s_obj.get_shape_area(), s_obj.get_shape_volume()
-
-
 # read in output
 def read_output():
+    print('Reading in generated mesh files...')
+    
     # read in created data
     f = open('vox2surf.surf')
     surf_lines = f.readlines()
@@ -126,11 +53,45 @@ def read_output():
     tris = tris.set_index(tris.index.astype(int))
     
     
-    vox_tris = pd.read_csv('voxel_triangles.dat').set_index('vox_idx', verify_integrity=True)
-        
-    return points, tris, vox_tris
+    f = open('triangle_voxels.dat')
+    tv_lines = f.readlines()
+    f.close()
+    
+    tv_split = [tv.split() for tv in tv_lines]
+    triangle_ids = []
+    owned_voxels = []
+    c_voxels = []
+    tri_flag = 0
+    for i in range(1, len(tv_split)):
+        if (tv_split[i]):
+            if (tv_split[i][0] == 'start'):
+                triangle_ids.append(int(tv_split[i][-1]))
+                c_voxels = []
+                tri_flag = 1
+            elif (tv_split[i][0] == 'end'):
+                owned_voxels.append(c_voxels)
+                c_voxels = []
+                tri_flag = 0
+            elif (tri_flag == 1):
+                c_voxels.append(int(tv_split[i][0]))
+            else:
+                raise Exception("ERROR: unable to read triangle_voxels.dat")
+    tri_voxs = {triangle_ids[i] : owned_voxels[i] for i in range(len(triangle_ids))}
+    
+    for tv in tri_voxs.values():
+        for v in range(len(tv)):
+            for v2 in range(v+1, len(tv)):
+                if tv[v] == tv[v2]:
+                    raise Exception("ERROR: surface voxel double-assigned to a triangle")
+    
+    print('Output successfully generated\n')
+    
+    return points, tris, tri_voxs
 
 def validate_geometry(tmesh):
+    print('\nChecking geometry validity')
+    print('--------------------------------')
+    
     if (tmesh.is_watertight):
         print('Mesh is watertight...')
     else:
@@ -146,6 +107,7 @@ def validate_geometry(tmesh):
     else:
         raise Exception('ERROR: mesh is not a manifold')
    
+    """
     if os.path.exists('forces.dat.0'):
         os.remove('forces.dat.0')
     if os.path.exists('forces.dat.10'):
@@ -161,105 +123,144 @@ def validate_geometry(tmesh):
     print('\n==============================================\n')
     if not os.path.exists('forces.dat.0'):
         raise Exception('ERROR: SPARTA run failed')
+    """
+    print('Geometry is valid\n')
+            
 
+def surface_quality_check(voxs, tmesh, it, analytical_vol):
+    print('\nChecking surface quality')
+    print('----------------------------')
+    # check voxels are inside surface
+    vol_voxels = voxs #vol_voxels = mc_system.voxels
+    result = tmesh.contains(vol_voxels).astype(int)
+    print(str(round(100*sum(result)/len(vol_voxels), 1)) + '% of voxels inside mesh out of ' + str(len(vol_voxels)) + ' total voxels')
+    
+    
+    # check actual surface area vs expected surface area vs analytical
+    print('{:.1f}% of voxel volume taken up by mesh ({:.2f} of {:.2f})'.format( \
+          100*tmesh.volume/(len(voxs)*(v_size**3)), tmesh.volume, (len(voxs)*(v_size**3))))
+    if (it == 0):
+        print('{:.1f}% of analytical volume taken up by mesh ({:.2f} of {:.2f})'.format( \
+              100*tmesh.volume/analytical_vol, tmesh.volume, analytical_vol))
+
+def mesh_quality_check(tris, points):
+    print('\nChecking mesh quality')
+    print('----------------------------')
+    
+    # area = sqrt(s(s - a)(s - b)(s - c)), Heron's formula, for triangle of sides a,b,c, s = 1/2*(a + b + c)
+    # AR = ratio of max to min length 
+    tri_area = []
+    tri_AR = []
+    tris['area'] = 0.0
+    for i in range(len(tris)):
+        ind = tris.iloc[i].name
+        p1 = np.array(points.loc[tris.iloc[i].loc['p1']])
+        p2 = np.array(points.loc[tris.iloc[i].loc['p2']])
+        p3 = np.array(points.loc[tris.iloc[i].loc['p3']])
+        
+        a = np.linalg.norm(p2 - p1)
+        b = np.linalg.norm(p3 - p2)
+        c = np.linalg.norm(p1 - p3)
+        s = 0.5*(a + b + c)
+        c_area = np.sqrt(s*(s - a)*(s - b)*(s - c))
+        tri_area.append(c_area)
+        tris.loc[ind, 'area'] = c_area
+        c_AR = max([a,b,c])/min([a,b,c])
+        tri_AR.append(c_AR)        
+        
+    print('Area ratio of triangle to voxel face: Min {:.2f} Avg {:.2f} Max {:.2f}'.format(min(tri_area)/(v_size)**2, (sum(tri_area)/len(tri_area))/(v_size)**2, max(tri_area)/(v_size**2)))
+    print('Aspect ratio of triangles:            Min {:.2f} Avg {:.2f} Max {:.2f}'.format(min(tri_AR), sum(tri_AR)/len(tri_AR), max(tri_AR)))
+    
+def voxel_removal(voxs, surface_voxels):
+    # remove voxels to test robustness of algorithm
+    print('.......................................')
+    print('..........REMOVING VOXELS..............')
+    print('.......................................')
+    voxel_types = np.zeros(len(voxs)).astype(int)
+    for sv in surface_voxels:
+        voxel_types[sv.id] = 1
+        
+    tvoxs = np.transpose(voxs)
+    pd_voxel = pd.DataFrame(np.transpose(np.array([tvoxs[0], tvoxs[1], tvoxs[2], voxel_types])), columns=['x','y','z','type'])
+    remove_pool = pd_voxel[pd_voxel['type'] != 0]
+    remove_pool = remove_pool.reset_index(drop=True)
+    nremove = int(len(remove_pool)/3) # remove 1/3 of the surface voxels
+    print(pd_voxel)
+    removed = rng.integers(0, len(remove_pool), size=nremove)
+    remove_pool = remove_pool.drop(index=removed)
+    zero_pool = pd_voxel[pd_voxel['type'] == 0]
+    new_voxels = pd.concat([zero_pool,remove_pool])
+    voxs = new_voxels[['x','y','z']].to_numpy()
+    
+    return voxs
+
+def voxel_triangle_assignment_check(tris, tri_voxs, mc_system):
+    print('\n\nChecking voxel-triangle assignment...')
+    print('------------------------------------------')
+    # check voxel assignment to triangles, voxel distance to centroid as fraction of cell length
+    
+    nvoxs_per_triangle = np.zeros(len(tris))
+    for tv in tri_voxs.keys():
+        if nvoxs_per_triangle[tv] != 0:
+            print('WARNING: duplicated triangle in triangle_voxels association')
+        nvoxs_per_triangle[tv] = len(tri_voxs[tv])
+    print('{:.1f}% of {:d} triangles have voxel(s) assigned'.format( \
+            100*np.count_nonzero(nvoxs_per_triangle)/len(tris), len(tris)))
+        
+    used_voxels = sum(tri_voxs.values(), [])
+    print('{:.1f}% of {:d} surface voxels have triangle(s) assigned'.format(100*len(set(used_voxels))/len(mc_system.surface_voxels), len(mc_system.surface_voxels)))
+    print()
+    
+    surface_flag = np.zeros(len(mc_system.voxels))
+    for sv in mc_system.surface_voxels:
+        surface_flag[sv.id] = 1
+    
+    ntris_per_vox = np.zeros(len(mc_system.voxels))
+    for uv in used_voxels:
+        ntris_per_vox[uv] += 1
+    temp_pd = pd.DataFrame(data=np.transpose(np.array([surface_flag, ntris_per_vox])), columns=['surf_flag', 'ntris'])
+    temp_pd = temp_pd[temp_pd['surf_flag'] == 1]
+    
+    print('Triangles assigned per-surface voxel:                     Min {:.2f} Avg {:.2f} Max {:.2f}'.format( \
+           temp_pd.loc[:, 'ntris'].min(), temp_pd.loc[:, 'ntris'].mean(), temp_pd.loc[:, 'ntris'].max()))
+    print('Surface voxels assigned per-triangle:                     Min {:.2f} Avg {:.2f} Max {:.2f}'.format( \
+           min(nvoxs_per_triangle), sum(nvoxs_per_triangle)/len(nvoxs_per_triangle), max(nvoxs_per_triangle)))
 
 def test_isthmus(lims, ncells, size, shapes, iterations, v_size, name, rng):
     print('Running isthmus')
     print('------------------')
-    lo = lims[0]
-    hi = lims[1]
+    mc_system = [] # placeholder for marching cubes object
+
+    
     for u in range(len(shapes)):    
         # generate voxels to be used by marching cubes
-        print('Generating '+ shapes[u] + ' volume of voxels...', end='')
         voxs, analytical_sa, analytical_vol = make_shape(v_size, lims, size, shapes[u])
-        voxel_types = np.zeros(len(voxs))
-        print(' {:d} voxels created'.format(len(voxs)))
         
         for it in range(iterations):
             if (it != 0):
-                # remove voxels to test robustness of algorithm
-                print('.......................................')
-                print('..........REMOVING VOXELS..............')
-                print('.......................................')
-                tvoxs = np.transpose(voxs)
-                pd_voxel = pd.DataFrame(np.transpose(np.array([tvoxs[0], tvoxs[1], tvoxs[2], voxel_types])), columns=['x','y','z','type'])
-                remove_pool = pd_voxel[pd_voxel['type'] != 0]
-                remove_pool = remove_pool.reset_index(drop=True)
-                nremove = int(len(remove_pool)/3)
-                print(pd_voxel)
-                removed = rng.integers(0, len(remove_pool), size=nremove)
-                remove_pool = remove_pool.drop(index=removed)
-                zero_pool = pd_voxel[pd_voxel['type'] == 0]
-                new_voxels = pd.concat([zero_pool,remove_pool])
-                voxs = new_voxels[['x','y','z']].to_numpy()
+                voxs = voxel_removal(voxs, mc_system.surface_voxels)
             
             # create triangle mesh and assign voxels to triangles; read in mesh data
-            print('Executing marching cubes...')
             mc_system = MC_System(lims, ncells, v_size, voxs, name)            
-            
-            tvoxs = np.transpose(voxs)
-            pd_voxel = pd.DataFrame(np.transpose(np.array([tvoxs[0], tvoxs[1], tvoxs[2], voxel_types])), columns=['x','y','z','type'])
-            pd_voxel['r'] = np.sqrt(pd_voxel['x']**2 + pd_voxel['y']**2 + pd_voxel['z']**2)
-            print(pd_voxel)
 
+            points, tris, tri_voxs = read_output() 
             
-            
-            print('Reading in generated mesh files...')
-            points, tris, vox_tris = read_output()
-            print('Output successfully generated\n')
-            
-            
-            # check geometric properties
-            print('\nChecking geometry validity')
-            print('--------------------------------')
             tmesh = trimesh.Trimesh(vertices=np.array(points), faces=np.array(tris) - 1)
             validate_geometry(tmesh)
-            print('Geometry is valid\n')
+
+            surface_quality_check(voxs, tmesh, it, analytical_vol)
+
+            mesh_quality_check(tris, points)
             
-            print('\nChecking surface quality')
-            print('----------------------------')
-            # check voxels are inside surface
-            vol_voxels = voxs #vol_voxels = mc_system.voxels
-            result = tmesh.contains(vol_voxels).astype(int)
-            print(str(round(100*sum(result)/len(vol_voxels), 1)) + '% of voxels inside mesh out of ' + str(len(vol_voxels)) + ' total voxels')
+            voxel_triangle_assignment_check(tris, tri_voxs, mc_system)
+
             
+            print('\nOLD STUFF BELOW\n')
+            tvoxs = np.transpose(voxs)
+            pd_voxel = pd.DataFrame(np.transpose(np.array([tvoxs[0], tvoxs[1], tvoxs[2]])), columns=['x','y','z'])
+            pd_voxel['r'] = np.sqrt(pd_voxel['x']**2 + pd_voxel['y']**2 + pd_voxel['z']**2)
+            print(pd_voxel)
             
-            # check actual surface area vs expected surface area vs analytical
-            print('{:.1f}% of voxel volume taken up by mesh ({:.2f} of {:.2f})'.format( \
-                  100*tmesh.volume/(len(voxs)*(v_size**3)), tmesh.volume, (len(voxs)*(v_size**3))))
-            if (it == 0):
-                print('{:.1f}% of analytical volume taken up by mesh ({:.2f} of {:.2f})'.format( \
-                      100*tmesh.volume/analytical_vol, tmesh.volume, analytical_vol))
-            
-            print('\nChecking mesh quality')
-            print('----------------------------')
-            # area = sqrt(s(s - a)(s - b)(s - c)), Heron's formula, for triangle of sides a,b,c, s = 1/2*(a + b + c)
-            # AR = abc/(8*(s-a)*(s-b)*(s-c)) 
-            tri_area = []
-            tri_AR = []
-            tris['area'] = 0.0
-            for i in range(len(tris)):
-                ind = tris.iloc[i].name
-                p1 = np.array(points.loc[tris.iloc[i].loc['p1']])
-                p2 = np.array(points.loc[tris.iloc[i].loc['p2']])
-                p3 = np.array(points.loc[tris.iloc[i].loc['p3']])
-                
-                a = np.linalg.norm(p2 - p1)
-                b = np.linalg.norm(p3 - p2)
-                c = np.linalg.norm(p1 - p3)
-                s = 0.5*(a + b + c)
-                c_area = np.sqrt(s*(s - a)*(s - b)*(s - c))
-                tri_area.append(c_area)
-                tris.loc[ind, 'area'] = c_area
-                c_AR = a*b*c/(8*(s - a)*(s - b)*(s - c))
-                tri_AR.append(c_AR)        
-                
-            print('Area ratio of triangle to voxel face: Min {:.2f} Avg {:.2f} Max {:.2f}'.format(min(tri_area)/(v_size)**2, (sum(tri_area)/len(tri_area))/(v_size)**2, max(tri_area)/(v_size**2)))
-            print('Aspect ratio of triangles:            Min {:.2f} Avg {:.2f} Max {:.2f}'.format(min(tri_AR), sum(tri_AR)/len(tri_AR), max(tri_AR)))
-            
-            print('\n\nChecking voxel-triangle assignment...')
-            print('------------------------------------------')
-            # check voxel assignment to triangles, voxel distance to centroid as fraction of cell length
             
             # first check that triangles haven't been changed by sparta
             # tris is from vox2surf file written by isthmus
@@ -284,7 +285,7 @@ def test_isthmus(lims, ncells, size, shapes, iterations, v_size, name, rng):
                 tris.loc[ind, 'v3y'] = points['y'].loc[tris['p3'].iloc[i]]
                 tris.loc[ind, 'v3z'] = points['z'].loc[tris['p3'].iloc[i]]
             
-            
+            """
             # read in SPARTA data
             f = open('forces.dat.10')
             surf_lines = f.readlines()
@@ -322,32 +323,6 @@ def test_isthmus(lims, ncells, size, shapes, iterations, v_size, name, rng):
             tris['centz'] = (tris['v1z'] + tris['v2z'] + tris['v3z'])/3
     
             
-            vox_tris['vx'] = 0.0
-            vox_tris['vy'] = 0.0
-            vox_tris['vz'] = 0.0
-            vox_tris['tx'] = 0.0
-            vox_tris['ty'] = 0.0
-            vox_tris['tz'] = 0.0
-            # populate voxel-triangle data
-            for i in range(len(vox_tris)):
-                ind = vox_tris.iloc[i].name
-                vox_tris.loc[ind, 'vx'] = voxs[ind][0]
-                vox_tris.loc[ind, 'vy'] = voxs[ind][1]
-                vox_tris.loc[ind, 'vz'] = voxs[ind][2]
-                vox_tris.loc[ind, 'tx'] = tris.loc[vox_tris.loc[ind, 'tri_id'], 'centx']
-                vox_tris.loc[ind, 'ty'] = tris.loc[vox_tris.loc[ind, 'tri_id'], 'centy']
-                vox_tris.loc[ind, 'tz'] = tris.loc[vox_tris.loc[ind, 'tri_id'], 'centz']
-                
-                tris.loc[vox_tris.loc[ind, 'tri_id'], 'nvox'] += 1
-        
-            vox_tris['dist'] = np.sqrt((vox_tris['vx'] - vox_tris['tx'])**2 + (vox_tris['vy'] - vox_tris['ty'])**2 + (vox_tris['vz'] - vox_tris['tz'])**2)
-    
-    
-            print('{:.1f}% of {:d} triangles have voxel(s) assigned'.format(100*sum(tris.loc[:, 'nvox'].astype(bool))/len(tris), len(tris)))
-            print('Voxels assigned per-triangle:                     Min {:.2f} Avg {:.2f} Max {:.2f}'.format(tris.loc[:, 'nvox'].min(), tris.loc[:, 'nvox'].mean(), tris.loc[:, 'nvox'].max()))
-            print('Distance from voxel center to triangle centroid:  Min {:.2f} Avg {:.2f} Max {:.2f}'.format(vox_tris.loc[:, 'dist'].min(), vox_tris.loc[:, 'dist'].mean(), vox_tris.loc[:, 'dist'].max()))
-            
-            
             # now dummy algorithm for applying ablation/force data to voxels
             # cosine designed to have some difference over the surface
             tris['r'] = 0.0
@@ -360,26 +335,8 @@ def test_isthmus(lims, ncells, size, shapes, iterations, v_size, name, rng):
     
             tris['scalar'] = (5*np.cos(tris['angle']) + 5)*tris['area']
             scalar_total_t = tris.loc[:, 'scalar'].sum()
-            
-            vox_tris['scalar'] = 0.0
-            vox_tris['r'] = 0.0
-            vox_tris['angle'] = 0.0
-            for i in range(len(vox_tris)):
-                ind = vox_tris.iloc[i].name
-                triangle_data = tris.loc[vox_tris.loc[ind, 'tri_id']]
-                vox_tris.loc[ind, 'scalar'] = triangle_data['scalar']/triangle_data['nvox']
-                
-                # get geometric data for voxels
-                cent = np.array(vox_tris.loc[ind].loc[['vx', 'vy', 'vz']])
-                r = np.linalg.norm(cent)
-                vox_tris.loc[ind, 'r'] = r
-                vox_tris.loc[ind, 'angle'] = np.arccos(np.dot(cent/r, np.array([1,0,0])))
-               
-            scalar_total_v = vox_tris.loc[:, 'scalar'].sum()
-            print('Voxel scalar total is {:.1f}% of triangle scalar total ({:.2f})'.format(100*scalar_total_v/scalar_total_t, scalar_total_t))
-            if (it == 0):
-                print('Voxel scalar total is {:.1f}% of analytical scalar total ({:.2f})'.format(100*scalar_total_v/(20*np.pi*size**2), (20*np.pi*size**2)))
-    
+            """
+         
             """
             if (it == 0):
                 xa = np.linspace(0, np.pi, 1000)
@@ -464,67 +421,21 @@ def test_isthmus(lims, ncells, size, shapes, iterations, v_size, name, rng):
                  
             print()
             
-            """
-            total = 21
-            for i in range(total):
-                sys.stdout.write('\r')
-                finished = int(10*(i+1)/total)
-                sys.stdout.write('[' + '='*finished + ' '*(10 - finished) + ']')
-                sys.stdout.flush()
-                sleep(0.25)
-            sys.stdout.write('\n')
-            """
-
 
 ############## IMPORTANT INPUT #############
 ncells = np.array([20,20,20])
 iterations = 1
-v_size = 0.12
+v_size = 1.2
 shapes = ['ellipsoid']
 
 ###########################################
 
-domain = 2
+domain = 20
 lo = [-domain]*3
 hi = [domain]*3
 lims = np.array([lo, hi])
 name = 'vox2surf.surf'
-radius = 1
+radius = 10
 rng = np.random.default_rng(999)
 
 test_isthmus(lims, ncells, radius, shapes, iterations, v_size, name, rng)
-
-"""
-from fpdf import FPDF
-
-
-#%% print results to pdf
-os.chdir('..')
-pdf = FPDF('P', 'mm', 'A4')
-pdf.set_margins(25.4, 25.4)
-pdf.add_page()
-pdf.set_font('Helvetica', 'B', 24)
-# 1mm = 2.83 points
-pdf.cell(0, 8.5, txt='Invicta Report', align= 'C', ln=1)
-
-pdf.set_font('Times', 'B', 16)
-gridtext = '\nPercentage of cells in convergence violation (Near + Far = 100%)\n'
-pdf.set_font('Times', '', 14)
-gridtext += '\nNear\n' + '-------\n'
-pdf.multi_cell(0, 5.5, txt=gridtext)
-gridtext = 'Total Simulation Statistics\n-------------------------------\n'
-pdf.multi_cell(0, 5.5, txt=gridtext) 
-pdf.cell(0, 5.5, txt='Particles deleted inside stages:  ' , ln=1)   
-pdf.cell(0, 5.5, txt='Particles deleted outside stages: ' , ln=1)   
-   
-print('Saving figures to PDF (7 total)...')
-
-
-for i in plt.get_fignums():
-    print('    '+str(i)+'...')
-    plt.figure(i)
-    plt.savefig('p'+str(i)+'.png', dpi=400)
-    pdf.image('p'+str(i)+'.png', w=100, x=32.5)
-
-pdf.output('InvictaReport.pdf', 'F')
-"""
