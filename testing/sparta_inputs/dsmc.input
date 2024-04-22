@@ -2,15 +2,15 @@ seed	    	    157291296
 units               si
 dimension   	    3
 
-global              fnum 1.0e17 gridcut 0.2
+global              fnum 1.0e17 gridcut 0.2 
 boundary	    r r r
-create_box  	    -2.0 2.0 -2.0 2.0 -2.0 2.0
-create_grid         100 100 100
+create_box  	    -2 2 -2 2 -2 2
+create_grid         40 40 40
 
 balance_grid        rcb cell
 
 species		    ./sparta_inputs/species.list N2
-mixture		    inflow N2 nrho 1.0e20 temp 150.0 trot 150.0 tvib 150.0 vstream 0 0 0 
+mixture		    inflow N2 nrho 1.0e18 temp 150.0 trot 150.0 tvib 150.0 vstream 0 0 0 
 
 collide             vss all ./sparta_inputs/collision.list relax constant
 collide_modify      rotate smooth vibrate discrete

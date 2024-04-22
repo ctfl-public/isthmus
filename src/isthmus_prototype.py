@@ -2,27 +2,95 @@ import numpy as np
 import os
 import sys
 from Marching_Cubes import marching_cubes, mesh_surface_area
-import imageio
+
+#%% Individual geometric elements used in grids
 
 class Triangle:
-    def __init__(self, verts, index):
+    def __init__(self, verts, identity, ncell):
         self.vertices = verts # [[x1, y1, z1], [x2,y2,z2], [x3,y3,z3]]
-        self.cell = -1      # owning cell object
-        self.voxel_ids = [] # index of each owned voxel
-        self.id = index     # own triangle index
+        self.id = identity     # own triangle index
+        self.cell = ncell    # owning cell object
+        self.voxel_ids = [] # index of each owned voxel in global array
+        self.s_voxel_ids = [] # index of owned voxel in surface array
+        self.voxel_scalar_fracs = [] # fraction of triangle values to assign to each voxel
+        self.centroid = np.average(verts, axis=0)
         
-        n = np.cross(verts[1] - verts[0], verts[2] - verts[0])
+        # basis vectors created from triangle
+        # transform triangle into basis vectors
+        self.u = self.vertices[1] - self.vertices[0]
+        self.v = self.vertices[2] - self.vertices[0]
+        n = np.cross(self.u, self.v)
         self.normal = n/np.linalg.norm(n) # outward normal
+        self.revert_matrix = np.transpose(np.array([self.u,self.v,self.normal])) # transform from tri basis to Cartesian
+        self.trans_matrix = np.linalg.inv(self.revert_matrix)               # transform from Cartesian to tri basis
+        
+        
+   
+class Extended_Triangle(Triangle):
+    def __init__(self, base_tri): # argument is base triangle which are extended here
+        super().__init__(base_tri.vertices, base_tri.id, base_tri.cell)
+        l_ext = np.array([min(Surface_Voxel.size, 2*np.linalg.norm(base_tri.vertices[i] - self.centroid)) for i in range(3)])
+        
+        for v in range(3):
+            original_ext = base_tri.vertices[v] - self.centroid
+            self.vertices[v] = base_tri.vertices[v] + l_ext[v]*(original_ext)/np.linalg.norm(original_ext)
+        
+    # distance to nearest point on triangle, by combining normal and planar components
+    def distance_to_voxel(self, vox, c_length):
+        n_dist = np.dot(self.normal, vox.position - self.vertices[0])
+        v_proj = (vox.position - self.normal*n_dist)  # project voxel onto plane
+        trans_vox = np.matmul(self.trans_matrix, v_proj - self.vertices[0]) # projected voxel in triangle basis
+        
+        if (n_dist <= 0 and n_dist >= -c_length and \
+            trans_vox[0] >= 0 and trans_vox[1] >= 0 and trans_vox[1] <= 1 - trans_vox[0]):
+            
+            return -1, abs(n_dist)
+        else:
+            if (trans_vox[0] <= 0 or trans_vox[1] > trans_vox[0] + 1):
+                pn = np.array([0, np.clip(trans_vox[1], 0, 1), 0]) # on v-axis
+            elif (trans_vox[1] <= 0 or trans_vox[1] < trans_vox[0] - 1):
+                pn = np.array([np.clip(trans_vox[0], 0, 1), 0, 0]) # on u-axis
+            else:
+                n_h = np.array([1/np.sqrt(2), 1/np.sqrt(2), 0])    # on hypotenuse
+                pn = np.dot((trans_vox - [0, 1, 0]), n_h)
+                pn = trans_vox - pn*n_h
+            # return to normal Cartesian coordinates with original origin
+            contact_point = np.matmul(self.revert_matrix, pn) + self.vertices[0]
+            plane_dist = np.linalg.norm(v_proj - contact_point)
+            
+            return np.sqrt(plane_dist**2 + n_dist**2) , abs(n_dist)
    
 class Surface_Voxel:
     size = 0
     def __init__(self, xs, index):
         self.position = xs
         self.id = index   # own voxel index
+        self.surf_id = Surface_Voxel.n_svoxels # voxel index in surface voxel list
+        Surface_Voxel.n_svoxels += 1
         self.triangle_ids = [] # index of each owned triangle
         self.closest_triangle_id = -1 # initialize to invalid id
         self.closest_triangle_dist = 1e12 # initialize to massive number
         self.closest_triangle_cell = -1 # initialize to invalid id
+
+# this class is for corners in the grid, i.e. each MC_Cell corresponds to
+# 8 MC_Corners
+class MC_Corner:
+    ## @param p corner position
+    def __init__(self, p, i, j, k):
+        self.position = p # [x,y,z]
+        self.indices = np.array([i,j,k]) # indices in the grid
+        self.volume = 0 # volume fraction of cell filled by voxel material
+        self.voxels = [] # voxel ids owned by corner
+
+# this is the unit cell of the marching cubes grid, with position, owned voxels,
+# and owned triangles
+class MC_Cell:
+    def __init__(self, i):
+        self.surface_voxels = [] # surface voxel objects owned by this cell
+        self.triangles = [] # triangles owned by this cell
+        self.id = i       # index in cell_grid
+
+#%% Main system class where all the magic happens
 
 class MC_System:  
     """! @brief Holder of the keys of the kingdom
@@ -31,6 +99,7 @@ class MC_System:
     def __init__(self, lims, ncells, voxel_size, voxels, name):
         print('Executing marching cubes...')
         
+        Surface_Voxel.n_svoxels = 0
         self.verts = []
         self.faces = []
         
@@ -48,14 +117,14 @@ class MC_System:
         
         # prepare marching cubes volume grid, and create mesh
         self.corner_grid = Corner_Grid(lims, ncells + 1, self.voxels, Surface_Voxel.size)       
-        self.triangles = self.create_surface()
+        self.create_surface()
         
         # write SPARTA-compliant surface
         self.write_surface(name)
         
         # find voxels on the surface and organize these surface voxels and triangles into cells
         self.surface_voxels = self.sort_voxels()            
-        self.cell_grid = Cell_Grid(lims, ncells, self.surface_voxels, self.triangles)
+        self.cell_grid = Cell_Grid(lims, ncells, self.surface_voxels, self.faces, self.verts)
         
         # associate voxels to triangles
         self.write_triangle_voxels()
@@ -158,41 +227,20 @@ class MC_System:
             
         self.verts = np.fliplr(verts) # marching_cubes() outputs in z,y,x order
         self.faces = faces
-        triangles = self.transform_surface(self.verts, self.faces)
+        self.transform_surface()
 
-        return triangles
 
     # marching_cubes() gives origin of (0,0,0) and cell size of 1; this rescales the surface properly
-    def transform_surface(self, verts, faces):
+    def transform_surface(self):
         cg = self.corner_grid
         
         # scale vertices from a cell length of 1 to the proper cell length
-        cell_len_array = np.array([cg.cell_length]*len(verts)).astype(float)
-        verts *= cell_len_array
+        cell_len_array = np.array([cg.cell_length]*len(self.verts)).astype(float)
+        self.verts *= cell_len_array
         
         # translate to proper coordinates
-        translations = np.array([cg.lims[0]]*len(verts))
-        verts += translations
-        
-        # find triangle outward unit normals
-        triangles = []
-        outward = 0
-        for i in range(len(faces)):
-            triangles.append(Triangle(verts[faces[i][:]], i))
-            
-            
-        #########debug checking##########
-            ps = verts[faces[i][:]]
-
-            n = np.cross(ps[1] - ps[0], ps[2] - ps[0])
-            n = n/np.linalg.norm(n)
-            centroid = (ps[0] + ps[1] + ps[2])/3
-            if (np.dot(centroid, n) > 0):
-                outward += 1
-        print('For {:d} faces, {:d} have outward normals'.format(len(faces), outward))
-        #################################
-                
-        return triangles
+        translations = np.array([cg.lims[0]]*len(self.verts))
+        self.verts += translations
     
     # write surface of triangles to disk, the argument is the name of the file
     def write_surface(self, name):
@@ -215,31 +263,19 @@ class MC_System:
         
     def write_triangle_voxels(self):
         f = open('triangle_voxels.dat', 'w')
-        f.write('{nt} total triangles\n\n'.format(nt = len(self.triangles)))
-        for t in self.triangles:
-            f.write('start id {ti}\n'.format(ti=t.id))
-            for v in t.voxel_ids:
-                f.write('    {vi}\n'.format(vi=v))
-            f.write('end id {ti}\n'.format(ti=t.id))
+        f.write('{nt} total triangles\n\n'.format(nt = len(self.cell_grid.triangles)))
+        for t in self.cell_grid.triangles:
+            f.write('start id {ti}\n'.format(ti=t.id + 1))
+            for v in range(len(t.voxel_ids)):
+                f.write('    {vi} {svf}\n'.format(vi=t.voxel_ids[v], svf=t.voxel_scalar_fracs[v]))
+            f.write('end id {ti}\n'.format(ti=t.id + 1))
         f.close()
     
     def get_surface_area(self):
         return mesh_surface_area(self.verts, self.faces)
 
-def progress_bar(c, total, message):
-    if np.ceil(100*(c + 1)/total) % progress_bar.c_decade == 0:
-        sys.stdout.write('\r')
-        finished = np.rint(10*(c + 1)/total).astype(int)
-        sys.stdout.write('    ' + message + '... [' + '='*finished + ' '*(10 - finished) + ']')
-        sys.stdout.flush()
-        progress_bar.c_decade += 10
-    if c + 1 >= total:
-        sys.stdout.write('\n')
-        progress_bar.c_decade = 10
-progress_bar.c_decade = 10
+#%% Grid class and derived classes
 
-
-# superclass for marching cubes cell grid and corner grid
 class Grid:
     def __init__(self, lims, dims):
         self.lims = lims    # grid domain limits, [[xlo,ylo,zlo], [xhi,yhi,zhi]]
@@ -274,16 +310,6 @@ class Voxel_Grid(Grid):
     def __init__(self, lims, dims):
         super().__init__(lims, dims)
         self.vox_space = np.ones(np.prod(dims))*-1   
-      
-# this class is for corners in the grid, i.e. each MC_Cell corresponds to
-# 8 MC_Corners
-class MC_Corner:
-    ## @param p corner position
-    def __init__(self, p, i, j, k):
-        self.position = p # [x,y,z]
-        self.indices = np.array([i,j,k]) # indices in the grid
-        self.volume = 0 # volume fraction of cell filled by voxel material
-        self.voxels = [] # voxel ids owned by corner
         
     
 # grid of corners, used to feed volume fractions to marching cubes function
@@ -356,79 +382,6 @@ class Corner_Grid(Grid):
                     vol_index = c.indices + active_flag*pen_flag
                     self.corners[self.get_element(vol_index[0], vol_index[1], vol_index[2])].volume += np.prod(c_lengths)
         
-
-# this is the unit cell of the marching cubes grid, with position, owned voxels,
-# and owned triangles
-class MC_Cell:
-    def __init__(self, i):
-        self.voxels = [] # surface voxel objects owned by this cell
-        self.triangles = [] # triangles owned by this cell
-        self.id = i       # index in cell_grid
-
-class Extended_Triangle():
-    x5 = 0
-    def __init__(self, base_tri): # argument is base triangle which are extended here
-        self.id = base_tri.id
-        self.cell = base_tri.cell
-        self.centroid = np.average(base_tri.vertices, axis=0)
-        self.normal = base_tri.normal
-        
-        l_ext = np.array([min(Surface_Voxel.size, 2*np.linalg.norm(base_tri.vertices[i] - self.centroid)) for i in range(3)])
-        
-        self.vertices = np.zeros((3, 3))
-        for v in range(3):
-            original_ext = base_tri.vertices[v] - self.centroid
-            self.vertices[v] = base_tri.vertices[v] + l_ext[v]*(original_ext)/np.linalg.norm(original_ext)
-        
-        # transform triangle into basis vectors
-        u = self.vertices[1] - self.vertices[0]
-        v = self.vertices[2] - self.vertices[0]
-        
-        self.revert_matrix = np.transpose(np.array([u,v,self.normal])) # transform from tri basis to Cartesian
-        self.trans_matrix = np.linalg.inv(self.revert_matrix)               # transform from Cartesian to tri basis
-        
-    def distance_to_voxel(self, vox, c_length):
-        # distance of point p to nearest point on triangle
-        
-        # normal component is easy to get
-        n_dist = np.dot(self.normal, vox.position - self.vertices[0])
-        v_proj = (vox.position - self.normal*n_dist)  # project voxel onto plane, reframe origin as vertex 0
-        trans_vox = np.matmul(self.trans_matrix, v_proj - self.vertices[0]) # projected voxel in triangle basis
-        
-        if (n_dist <= 0 and n_dist >= -c_length and \
-            trans_vox[0] >= 0 and trans_vox[1] >= 0 and trans_vox[1] <= 1 - trans_vox[0]):
-            return -1, 0, 0
-        else:
-            if (trans_vox[0] <= 0 or trans_vox[1] > trans_vox[0] + 1):
-                pn = np.array([0, np.clip(trans_vox[1], 0, 1), 0]) # on v-axis
-            elif (trans_vox[1] <= 0 or trans_vox[1] < trans_vox[0] - 1):
-                pn = np.array([np.clip(trans_vox[0], 0, 1), 0, 0]) # on u-axis
-            else:
-                n_h = np.array([1/np.sqrt(2), 1/np.sqrt(2), 0])    # on hypotenuse
-                pn = np.dot((trans_vox - [0, 1, 0]), n_h)
-                pn = trans_vox - pn*n_h
-            # return to normal Cartesian coordinates with original origin
-            contact_point = np.matmul(self.revert_matrix, pn) + self.vertices[0]
-            plane_dist = np.linalg.norm(v_proj - contact_point)
-            # NEED TO RETURN TO NORMAL CARTESIAN COORDS
-            # something still isn't right, contact point is still weird and pn way too big
-            # is 3d rotation wrong somehow?
-            # get triangle data for bad ones
-            if (min(pn[:2]) < 0):
-                print('lt 0 ' + str(pn) + ', ' + str(contact_point))
-                print()
-            elif (max(pn[:2]) > 1):
-                print('gt 1 ' + str(pn) + ', ' + str(contact_point))
-                print()
-            elif (pn[1] - (1 - pn[0]) > 1e-6):
-                print('odiag ' + str(pn[1] - 1 + pn[0]))
-                print(pn)
-                print()
-            elif (abs(pn[2]) > 1e-5):
-                print('zprob ' + str(pn) + ', ' + str(contact_point))
-                print()
-            return np.sqrt(plane_dist**2 + n_dist**2), n_dist, plane_dist
-        
 # this is where voxels and triangles are located and connected to each other
 class Cell_Grid(Grid):
     neighbor_increments = np.array([])
@@ -438,7 +391,7 @@ class Cell_Grid(Grid):
                 neighbor_increments = np.append(neighbor_increments, [x,y,z])
     neighbor_increments = np.reshape(neighbor_increments, (27, 3)).astype(int)
     
-    def __init__(self, lims, dims, surface_voxels, triangles):
+    def __init__(self, lims, dims, surface_voxels, faces, verts):
         print('Associating voxels to surface triangles...')
         super().__init__(lims, dims)
         self.cell_length = (self.lims[1] - self.lims[0])/self.dims # length of cell in [x,y,z] directions
@@ -446,9 +399,9 @@ class Cell_Grid(Grid):
         for i in range(3): # center of cell
             self.coords[i] = list(np.linspace(self.lims[0][i] + 0.5*self.cell_length[i], \
                                               self.lims[1][i] - 0.5*self.cell_length[i], self.dims[i]))
-                
+             
         self.associate_voxels(surface_voxels) # associate voxels on surface to cells
-        self.associate_triangles(triangles)   # associate triangles to cells
+        self.associate_triangles(faces, verts)   # associate triangles to cells
         self.voxels_to_triangles()
 
         
@@ -457,20 +410,22 @@ class Cell_Grid(Grid):
     ## in appropriate groups
     ## @{
     # associate edge voxels to cells
-    def associate_voxels(self, surface_voxels):            
+    def associate_voxels(self, surface_voxels):
+        self.surface_voxels = surface_voxels            
         for v in surface_voxels:
             ind = ((v.position - self.lims[0])/self.cell_length).astype(int) # x,y,z corner indices
-            self.cells[self.get_element(ind[0],ind[1],ind[2])].voxels.append(v)
+            self.cells[self.get_element(ind[0],ind[1],ind[2])].surface_voxels.append(v)
 
     # associate triangles to cells
     ## @return tri_cell_ids an array of cell ids indexed by face indices
-    def associate_triangles(self, triangles):
-        for i in range(len(triangles)):
-            centroid = np.average(triangles[i].vertices, axis=0)
+    def associate_triangles(self, faces, verts):
+        self.triangles = []
+        for i in range(len(faces)):
+            centroid = np.average(verts[faces[i][:]], axis=0)
             ind = ((centroid - self.lims[0])/self.cell_length).astype(int) # cell indices [x,y,z]
             n = self.get_element(ind[0],ind[1],ind[2])
-            triangles[i].cell = n
-            self.cells[n].triangles.append(triangles[i])
+            self.triangles.append(Triangle(verts[faces[i][:]], i, n))
+            self.cells[n].triangles.append(self.triangles[-1])
     ## @}    
     
     # STILL NEEDS CHANGING
@@ -482,18 +437,24 @@ class Cell_Grid(Grid):
         for c in self.cells:
             if len(c.triangles):
                 self.v2t_per_cell(c, c_length)
-            progress_bar(c.id+1, len(self.cells), 'associating voxels')
+            progress_bar(c.id + 1, len(self.cells), 'associating voxels    ')
             
         # make sure triangle-less voxels get at least one triangle
         for c in self.cells:
-            for vox in c.voxels:
+            for vox in c.surface_voxels:
                 if (len(vox.triangle_ids) == 0):
                     for t in self.cells[vox.closest_triangle_cell].triangles:
                         if (t.id == vox.closest_triangle_id):
                             t.voxel_ids.append(vox.id)
+                            t.s_voxel_ids.append(vox.surf_id)
                             vox.triangle_ids.append(t.id)
                             break
-
+                        
+        # now get scalar fractions for each triangle's voxels
+        for t in self.triangles:
+            ntris_recip = np.array([1/len(self.surface_voxels[v].triangle_ids) for v in t.s_voxel_ids])
+            t.voxel_scalar_fracs = ntris_recip/ntris_recip.sum()
+            
     def v2t_per_cell(self, c, c_length):
         # collect all voxels in current and neighboring cells
         ind = list(self.get_indices(c.id))
@@ -501,7 +462,7 @@ class Cell_Grid(Grid):
         for ni in Cell_Grid.neighbor_increments:
             n_ind = ind + ni
             if (self.valid_element(n_ind)):
-                c_voxels += self.cells[self.get_element(n_ind[0], n_ind[1], n_ind[2])].voxels
+                c_voxels += self.cells[self.get_element(n_ind[0], n_ind[1], n_ind[2])].surface_voxels
         
         # project an expanded surface triangle c_length in the inward direction; all voxels
         # with centers in this projected region are assigned to that triangle
@@ -511,11 +472,12 @@ class Cell_Grid(Grid):
             # check all current voxels against projected volume (enlarged triangle projected -c_length inward)
             total_distance = []
             for vox in c_voxels:
-                dist, n_dist, plane_dist = c_extri.distance_to_voxel(vox, c_length)
+                dist, n_dist = c_extri.distance_to_voxel(vox, c_length)
                 if dist == -1:
                     vox.triangle_ids.append(t.id)
                     t.voxel_ids.append(vox.id)
-                    total_distance.append(0)
+                    t.s_voxel_ids.append(vox.surf_id)
+                    total_distance.append(n_dist)
                 else:
                     total_distance.append(dist)
                 
@@ -528,4 +490,20 @@ class Cell_Grid(Grid):
             if (len(t.voxel_ids) == 0):
                 ind = total_distance.index(min(total_distance))
                 t.voxel_ids.append(c_voxels[ind].id)
+                t.s_voxel_ids.append(c_voxels[ind].surf_id)
                 c_voxels[ind].triangle_ids.append(t.id)
+
+#%% Miscellaneous Functions
+
+def progress_bar(c, total, message):
+    finished = 0
+    if np.ceil(100*(c + 1)/total) == progress_bar.c_decade:
+        sys.stdout.write('\r')
+        finished = np.rint(10*(c + 1)/total).astype(int)
+        sys.stdout.write('    ' + message + '... [' + '='*finished + ' '*(10 - finished) + ']')
+        sys.stdout.flush()
+        progress_bar.c_decade += 10
+    if finished == 10:
+        sys.stdout.write('\n')
+        progress_bar.c_decade = 10
+progress_bar.c_decade = 10
