@@ -96,7 +96,7 @@ class MC_System:
     """! @brief Holder of the keys of the kingdom
     Welcome to the isthmus experience! This program assumes minimal overlap of pixels,
     """
-    def __init__(self, lims, ncells, voxel_size, voxels, name):
+    def __init__(self, lims, ncells, voxel_size, voxels, name, call_no):
         print('Executing marching cubes...')
         
         Surface_Voxel.n_svoxels = 0
@@ -127,7 +127,7 @@ class MC_System:
         self.cell_grid = Cell_Grid(lims, ncells, self.surface_voxels, self.faces, self.verts)
         
         # associate voxels to triangles
-        self.write_triangle_voxels()
+        self.write_triangle_voxels(call_no)
         
     ## check validity of grid limits and number of cells
     def check_grid(self, lims, ncells):
@@ -158,10 +158,10 @@ class MC_System:
         
         for i in range(3):
             # i is 0,1,2 for x,y, or z; positions is list of coordinates
-            border = lims[0][i] + 0.5*(voxel_size + cell_length[i])
+            border = lims[0][i] + 0.05*(voxel_size + cell_length[i])
             if (any(x < border for x in positions[i])):
                 raise Exception("Voxel(s) outside of acceptable grid space")
-            border = lims[1][i] - 0.5*(voxel_size + cell_length[i])
+            border = lims[1][i] - 0.05*(voxel_size + cell_length[i])
             if (any(x > border for x in positions[i])):
                 raise Exception("Voxel(s) outside of acceptable grid space")
     
@@ -228,6 +228,7 @@ class MC_System:
         self.verts = np.fliplr(verts) # marching_cubes() outputs in z,y,x order
         self.faces = faces
         self.transform_surface()
+        self.corner_volumes = corner_volumes
 
 
     # marching_cubes() gives origin of (0,0,0) and cell size of 1; this rescales the surface properly
@@ -261,8 +262,8 @@ class MC_System:
                                                         p2 = self.faces[i][1] + 1, p3 = self.faces[i][2] + 1)) 
         surf_file.close() 
         
-    def write_triangle_voxels(self):
-        f = open('triangle_voxels.dat', 'w')
+    def write_triangle_voxels(self,call_no):
+        f = open('voxel_tri/triangle_voxels_'+str(call_no)+'.dat', 'w')
         f.write('{nt} total triangles\n\n'.format(nt = len(self.cell_grid.triangles)))
         for t in self.cell_grid.triangles:
             f.write('start id {ti}\n'.format(ti=t.id + 1))
