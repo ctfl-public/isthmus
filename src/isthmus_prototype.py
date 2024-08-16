@@ -24,7 +24,30 @@ class Triangle:
         self.revert_matrix = np.transpose(np.array([self.u,self.v,self.normal])) # transform from tri basis to Cartesian
         self.trans_matrix = np.linalg.inv(self.revert_matrix)               # transform from Cartesian to tri basis
         
-        
+def get_tri_area(verts):
+    # herons formula = sqrt(s(s - a)(s - b)(s - c)) for triangle lengths a,b,c, s= half-perimeter
+    a = np.linalg.norm(verts[2] - verts[1])
+    b = np.linalg.norm(verts[1] - verts[0])
+    c = np.linalg.norm(verts[0] - verts[2])
+
+    s = (a + b + c)/2
+    area = np.sqrt(s*(s - a)*(s - b)*(s - c))
+
+    return area
+   
+def get_longest_side(verts):
+    L0 = np.linalg.norm(verts[1] - verts[0])
+    L1 = np.linalg.norm(verts[2] - verts[1])
+    L2 = np.linalg.norm(verts[0] - verts[2])
+    sides = np.array([L0, L1, L2])
+    max_len = np.argmax(sides)
+    if max_len == 0:
+        AC = [1, 0]
+    elif max_len == 1:
+        AC = [2, 1]
+    else:
+        AC = [0, 2]
+    return AC
    
 class Extended_Triangle(Triangle):
     def __init__(self, base_tri): # argument is base triangle which are extended here
@@ -220,13 +243,85 @@ class MC_System:
             a,b,c = cg.get_indices(n)
             corner_volumes[c][b][a] = cg.corners[n].volume # marching cubes requires [z,y,x] order
 
-        verts, faces, normals, values = marching_cubes( \
-               volume= corner_volumes, level=0.5, \
-               gradient_direction='descent', \
-               allow_degenerate=False)
+        verts, faces, normals, values = marching_cubes(volume= corner_volumes, level=0.5)
             
         self.verts = np.fliplr(verts) # marching_cubes() outputs in z,y,x order
         self.faces = faces
+        # purging degenerates
+        # 1. Points cannot be duplicates of each other
+
+        p_eps = 1e-5 # this is a small epsilon to determine if points are the 'same'
+        dupes = (np.ones(len(self.verts))*-1).astype(int) # -1 not duplicate, otherwise index of what it duplicates
+        # find all duplicate points
+        for i in range(len(self.verts)):
+            if (dupes[i] == -1):
+                for j in range(i + 1, len(self.verts)):
+                    if (dupes[j] == -1):
+                        if (max(abs(self.verts[j] - self.verts[i])) < p_eps):
+                            dupes[j] = i
+
+        # replace all duplicate points with 'original' point
+        revealed_faces = np.array([p if dupes[p] == -1 else dupes[p] for p in self.faces.flatten()])
+        revealed_faces.resize((len(self.faces), 3))
+
+        # 2. Triangles must have a set of 3 unique points
+        revealed_faces = np.array([f for f in revealed_faces if len(set(f)) == 3])
+        # reassign vertices after transformation
+        # 3. Triangles cannot be degenerate (collinear)
+        #       3a. separate degenerates from full triangles
+        area_eps = 1e-6 # if area less than this, it's 'zero'
+        degen_tris = []
+        degen_edges = []
+        full_tris = []
+        for f in revealed_faces:
+            vs = self.verts[f]
+            a = get_tri_area(vs)
+            if a < area_eps:
+                degen_tris.append(f)
+                degen_edges.append(set(f[get_longest_side(vs)]))
+            else:
+                full_tris.append(f)
+        degen_tris = np.array(degen_tris)
+        degen_edges = np.array(degen_edges)
+        full_tris = np.array(full_tris)
+        #       3b. delete pairs of degenerates that share an edge
+        dupes = np.zeros(len(degen_edges)).astype(int)
+        for i in range(len(degen_edges)):
+            if dupes[i] == 0:
+                for j in range(i + 1, len(degen_edges)):
+                    if dupes[j] == 0:
+                        if degen_edges[i] == degen_edges[j]:
+                            dupes[j] = 1
+                            dupes[i] = 1
+        degen_edges = degen_edges[dupes == 0] # if edge shared by two degens, no connectivity
+        degen_tris = degen_tris[dupes == 0]   # issue, just delete it
+
+        #       3c. repair connectivity for full triangles sharing an edge with a degenerate
+        for i in range(len(degen_edges)):
+            # roughly, to fix connectivity where quad ABCM has degen triangle ABC
+            # and full triangle ACM, switch it instead to triangles ABM and BCM,
+            # deleting ACM from the full_tris list
+            de = degen_edges[i] # de is {A, C}
+            for j in range(len(full_tris)): # f is triangle A,C,M
+                f = full_tris[j]
+                if de.issubset(f):
+                    dt = degen_tris[i] # triangle A,B,C
+                    dl = list(de)
+                    A = dl[0]
+                    C = dl[1]
+
+                    M = f[~np.isin(f, dl)][0] # M is full tri vertex not shared by degen triangle
+                    B = dt[~np.isin(dt, dl)][0] # B is degen tri vertex not shared by full triangle
+                    new_tri1 = np.array([v if v != A else B for v in f])
+                    new_tri2 = np.array([v if v != C else M for v in dt])
+
+                    full_tris[j] = new_tri1 # replace ACM with new triangle
+                    full_tris = np.append(full_tris, np.array([new_tri2]), axis=0) # append other new triangle
+                    break
+
+        self.faces = full_tris
+
+
         self.transform_surface()
         self.corner_volumes = corner_volumes
 
