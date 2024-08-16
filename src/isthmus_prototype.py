@@ -4,7 +4,6 @@ import sys
 from Marching_Cubes import marching_cubes, mesh_surface_area
 
 #%% Individual geometric elements used in grids
-
 class Triangle:
     def __init__(self, verts, identity, ncell):
         self.vertices = verts # [[x1, y1, z1], [x2,y2,z2], [x3,y3,z3]]
@@ -48,7 +47,7 @@ def get_longest_side(verts):
     else:
         AC = [0, 2]
     return AC
-   
+
 class Extended_Triangle(Triangle):
     def __init__(self, base_tri): # argument is base triangle which are extended here
         super().__init__(base_tri.vertices, base_tri.id, base_tri.cell)
@@ -244,7 +243,7 @@ class MC_System:
             corner_volumes[c][b][a] = cg.corners[n].volume # marching cubes requires [z,y,x] order
 
         verts, faces, normals, values = marching_cubes(volume= corner_volumes, level=0.5)
-            
+
         self.verts = np.fliplr(verts) # marching_cubes() outputs in z,y,x order
         self.faces = faces
         # purging degenerates
@@ -323,7 +322,6 @@ class MC_System:
 
 
         self.transform_surface()
-        self.corner_volumes = corner_volumes
 
 
     # marching_cubes() gives origin of (0,0,0) and cell size of 1; this rescales the surface properly
