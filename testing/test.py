@@ -13,6 +13,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import trimesh
 import subprocess
 import os
+import platform
 from shape_types import Ellipsoid, Cylinder, Cube, make_shape
     
 
@@ -78,7 +79,7 @@ def read_output():
     tris = tris.set_index(tris.index.astype(int))
     
     
-    f = open('triangle_voxels.dat')
+    f = open('triangle_voxels_0.dat')
     tv_lines = f.readlines()
     f.close()
     
@@ -142,7 +143,14 @@ def validate_geometry(tmesh):
         os.remove('forces.dat.10')
     
     print('Testing mesh in SPARTA...')
-    sp_out = subprocess.run(["powershell", "bash", "./run.sh"], capture_output=True)
+    cmdargs = []
+    if (platform.system() == 'Windows'):
+        cmdargs = ["powershell", "bash", "./run.sh"]
+    elif (platform.system() == 'Linux'):
+        cmdargs = ["./run.sh"]
+    else:
+        raise Exception('ERROR: Mac not supported for testing')
+    sp_out = subprocess.run(cmdargs, capture_output=True)
     sp_out = sp_out.stdout.decode('utf-8')
     sp_out = sp_out.split(sep='\n')
     print('\n==============================================')
@@ -290,7 +298,7 @@ def test_isthmus(lims, ncells, size, shapes, iterations, v_size, name, rng):
                 voxs = voxel_removal(voxs, mc_system.surface_voxels)
             
             # create triangle mesh and assign voxels to triangles; read in mesh data
-            mc_system = MC_System(lims, ncells, v_size, voxs, name)            
+            mc_system = MC_System(lims, ncells, v_size, voxs, name, 0)
 
             points, tris, tri_voxs, tri_sfracs = read_output()
             

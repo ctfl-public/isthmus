@@ -5,10 +5,11 @@
 # Molmass (kg)
 # Rotational dof
 # RotRel
+# Rotational temp (K) with symmetry
 # Vibrational dof
 # VibRel
 # VibTemp (K)
 # species wt
 # charge
 
-N2  28.016   4.65E-26  2    0.2  2    0.01          3371.0    1.0      0.0
+N2  28.016   4.65E-26  2    0.2  5.76  2    0.01          3371.0    1.0      0.0
