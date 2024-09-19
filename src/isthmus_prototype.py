@@ -3,6 +3,8 @@ import os
 import sys
 from Marching_Cubes import marching_cubes, mesh_surface_area
 
+# need csv, dev, grids, voxel_data, and voxel_tri folders
+
 #%% Individual geometric elements used in grids
 class Triangle:
     def __init__(self, verts, identity, ncell):
@@ -21,7 +23,7 @@ class Triangle:
         n = np.cross(self.u, self.v)
         self.normal = n/np.linalg.norm(n) # outward normal
         self.revert_matrix = np.transpose(np.array([self.u,self.v,self.normal])) # transform from tri basis to Cartesian
-        self.trans_matrix = np.linalg.inv(self.revert_matrix)               # transform from Cartesian to tri basis
+        self.trans_matrix = np.linalg.inv(self.revert_matrix)                    # transform from Cartesian to tri basis
         
 def get_tri_area(verts):
     # herons formula = sqrt(s(s - a)(s - b)(s - c)) for triangle lengths a,b,c, s= half-perimeter

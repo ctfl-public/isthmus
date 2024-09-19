@@ -10,7 +10,3 @@ Testing Files (./testing)
 This is where the testing script is to verify things like
 geometry validity, quality, etc.
 
-Dev Files (./dev)
-------------------
-This is the catch-all place for random stuff that I haven't
-properly organized yet
