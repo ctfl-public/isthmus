@@ -1,6 +1,8 @@
 import numpy as np
 import os
 import sys
+from scipy.spatial import ComplexHull
+# ComplexHull(np.array(points)).volume gives area in 2D
 from Marching_Cubes import marching_cubes, mesh_surface_area
 
 # need csv, dev, grids, voxel_data, and voxel_tri folders
