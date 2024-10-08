@@ -4,6 +4,7 @@ __pycache__/
 *.png
 *.c
 */*.c
+testing/test_results
 build
 env
 .venv

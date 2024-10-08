@@ -167,10 +167,17 @@ if __name__ == '__main__':
     print(combinedMesh.is_volume)
 
 """
-
-
-
-
+# METHOD 1
+# in theory checking overlaps would be faster (?) but in the little testing i did it actually slowed it down
+# label = 'yes overlap check'
+# overlap, proj_f = t.check_overlap(f) # check if face is exposed to triangle and overlaps
+# if (overlap):
+#     area = t.get_intersection_area(proj_f) # find area of overlap between projected face and triangle
+#     vox.triangle_ids.append(t.id)
+#     vox.triangle_ids = list(set(vox.triangle_ids)) # prevent duplicates in list
+#     v_ids.append(vox.id)
+#     sv_ids.append(vox.surf_id)
+#     v_areas.append(area)
 
 
 # This is vox2stl.py

@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import sys
+import time
 import copy
 from Marching_Cubes import marching_cubes, mesh_surface_area
 
@@ -396,8 +397,8 @@ class MC_System:
         for sv in surface_voxels:
             v = sv.id
             counter = 0
-            for d in range(3):
-                for i in range(-1, 2, 2):
+            for d in range(3): # x, y, z directions
+                for i in range(-1, 2, 2): # negative and positive neighbor
                     ind = list(vox_grid.get_indices(vox_elno[v]))
                     ind[d] += i
                     if (vox_grid.valid_element(ind)):
@@ -703,11 +704,8 @@ class Cell_Grid(Grid):
     # associate each triangle to voxels based on inward normal view of voxel faces
     def voxels_to_triangles(self):        
         # first assign voxels to each triangle in each cell
-        tfaces = 0
-        ttris = 0
         for c in self.cells:
             if len(c.triangles):
-                ttris += len(c.triangles)
                 # collect all voxels in current and neighboring cells
                 ind = list(self.get_indices(c.id))
                 c_voxels = []
@@ -718,9 +716,6 @@ class Cell_Grid(Grid):
                 
                 # project eligible exposed voxel faces onto triangle plane and test for intersection
                 for t in c.triangles:
-                    sd = False
-                    if all(abs(t.normal - [0,0,-1]) < 1e-4):
-                        sd = True
                     v_ids = []
                     sv_ids = []
                     v_areas = []
@@ -728,12 +723,7 @@ class Cell_Grid(Grid):
                     for vox in c_voxels:
                         for f in vox.faces:
                             if (f.exposed):
-                                # overlap, proj_f = t.check_overlap(f) # check if face is exposed to triangle and overlaps
                                 if (np.dot(f.n, t.normal) > 0):
-                                    centroid = np.sum(f.xs, axis=0)/len(f.xs)
-                                    #if (all(abs(centroid - [-2.1e-5, -2.1e-5, -2.5e-5]) < 0.7e-6) and sd):
-                                    if (sd and all(abs(f.n - [0,0,-1]) < 1e-4)):
-                                        b = 1
                                     proj_f = np.array([f.xs[i] - t.normal*np.dot(t.normal, f.xs[i] - t.vertices[0]) for i in range(4)])
                                     area = t.get_intersection_area(proj_f) # find area of overlap between projected face and triangle
                                     vox.triangle_ids.append(t.id)
@@ -743,7 +733,6 @@ class Cell_Grid(Grid):
                                     v_areas.append(area)
 
                     # collect voxel face areas together
-                    tfaces += len(v_ids)
                     for i in range(len(v_ids)):
                         if (v_ids[i] in t.voxel_ids):
                             ind = t.voxel_ids.index(v_ids[i])
@@ -754,8 +743,8 @@ class Cell_Grid(Grid):
                                 t.s_voxel_ids.append(sv_ids[i])
                                 t.voxel_scalar_fracs.append(v_areas[i])
 
-            #progress_bar(c.id + 1, len(self.cells), 'associating voxels    ')
-                        
+            progress_bar(c.id + 1, len(self.cells), 'associating voxels    ')
+
         # now normalize scalar fractions by total voxel face area intercepted by the triangle
         low_area = 0
         for t in self.triangles:

@@ -15,9 +15,7 @@ import subprocess
 import os
 import copy
 import platform
-import random
-import pickle
-from shape_types import Ellipsoid, Cylinder, Cube, make_shape
+from shape_types import make_shape
 
 
 # distance to nearest point on triangle, by combining normal and planar components
@@ -326,7 +324,7 @@ def quadrant_check(file_no,q_lims,quad_no):
         
         for k in range(len(vox_no)):
             
-            c_removed_quadrant = c_removed_quadrant + sfracs[k] * co_formed[co_formed_quadrants_ind[i],1]
+            c_removed_quadrant = c_removed_quadrant + sfracs[k] * co_formed[co_formed_quadrants_ind[i]]
     
     quadrants(voxs_plot,c_removed_vox,co_formed,file_no,mass_c_vox,q_lims,quad_no)
     print('x: '+str(q_lims[0,0])+' '+str(q_lims[1,0])+' y: '+str(q_lims[0,1])+' '+str(q_lims[1,1])+' z: '+str(q_lims[0,2])+' '+str(q_lims[1,2]))
@@ -534,7 +532,7 @@ def get_tri_area(faces,vertices):
     
         s = (a + b + c)/2
         area = np.sqrt(s*(s - a)*(s - b)*(s - c))
-        areas.append([area])
+        areas.append(area)
 
     return np.array(areas,dtype='float')
 
@@ -550,22 +548,16 @@ def find_normals(file_no):
     return np.array(normals,dtype='float')
 
 def co_formation(vertices,normals,areas,mass_flux,timescale,file_no,v_size):
-    co_formed  = np.zeros((len(faces),2))
-    min_x = min(vertices[:,1])
+    co_formed  = np.zeros(len(faces))
     areas_deleted = []
     f = open('tri_data.csv', 'w')
     f.write('x,y,z,abl\n')
     for i in range(len(faces)):
         cverts = vertices[faces[i]]
         centroid = (cverts[0] + cverts[1] + cverts[2])/3
-        co_formed[i,0] = int(i)
-        if abs(vertices[faces[i,0],0] - min_x) < file_no*v_size or \
-           abs(vertices[faces[i,1],0] - min_x) < file_no*v_size or \
-           abs(vertices[faces[i,2],0] - min_x) < file_no*v_size or \
-           all(normals[i,0] - [-1,0,0] < 1e-6):
-            co_formed[i,1] = timescale*mass_flux*areas[i]
-            areas_deleted.append([areas[i]])
-        f.write('{:.2e},{:.2e},{:.2e},{:.2e}\n'.format(centroid[0], centroid[1], centroid[2], co_formed[i,1]))
+        co_formed[i] = timescale*mass_flux*areas[i]
+        areas_deleted.append(areas[i])
+        f.write('{:.2e},{:.2e},{:.2e},{:.2e}\n'.format(centroid[0], centroid[1], centroid[2], co_formed[i]))
     f.close()
     
     return co_formed, np.array(areas_deleted,dtype='float')
@@ -583,7 +575,7 @@ def write_csv_all(voxs_plot,c_removed_vox,co_formed,file_no,mass_c_vox,ntris):
     f = open('./csv/test_'+str(file_no)+'.csv','w+')
     for i in range(len(voxs_plot)):
         if i == 0:
-            f.write('X,Y,Z,deleted,abl,ntris\n')
+            f.write('x,y,z,deleted,abl,ntris\n')
         f.write(str(voxs_plot[i,0])+','+str(voxs_plot[i,1])+','+str(voxs_plot[i,2])+','+str(co_in_cell_plot[i,3])+','+str(c_removed_vox[i])+','+str(ntris[i])+'\n')
     f.close()
 
@@ -640,7 +632,10 @@ def safe_mkdir(path, name):
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     pathg= os.getcwd() + '/'
+    safe_mkdir(pathg, 'test_results')
 
+    os.chdir('./test_results')
+    pathg= os.getcwd() + '/'
     safe_mkdir(pathg, 'Grids')
     safe_mkdir(pathg, 'voxel_data')
     safe_mkdir(pathg, 'voxel_tri')
@@ -649,9 +644,19 @@ if __name__ == '__main__':
     safe_mkdir(pathg, 'Flowfiles')
 
     ############## IMPORTANT INPUT #############
-    ncells = np.array([30, 30, 30])
-    iterations = 5
-    v_size = 2*10**-6
+    # case 1
+    #   ncells [30,30,30], v_size = 2e-6
+    #   basically perfectly aligned, low-resolution
+    # case 2:
+    #   ncells [37,37,37], v_size = 1.5e-6
+    #   marching cubes grid misaligned with voxels
+    # case 3:
+    #   ncells [30,30,30], v_size = 0.9e-6
+    #   voxels half size of marching cube grid, misaligned
+
+    ncells = np.array([30,30,30])
+    iterations = 10
+    v_size = 0.9e-6
     shapes = ['cube']
     ###########################################
 
@@ -662,47 +667,25 @@ if __name__ == '__main__':
     name = 'vox2surf.surf'
     length = 25*10**-6
     rng = np.random.default_rng(999)
-    mass_flux = 10 #kgm-2s-1
+    mass_flux = 10 # kgm-2s-1
     timescale = 0.000181
 
-    voxs = []
     analytical_vol = 0
 
-    for i in range(iterations):
-        file_no = i
-        print(i)
+    for file_no in range(iterations):
+        print('Running isthmus: {:d}'.format(file_no))
+        print('-----------------------')
+        cell_len = (lims[1] - lims[0])/ncells
+        print('Cell size: ({:.2e}, {:.2e}, {:.2e})'.format(cell_len[0], cell_len[1], cell_len[2]))
+        print('Voxel size: {:.2e}'.format(v_size))
 
         if file_no == 0:
-            print('Running isthmus')
-            print('------------------')
             mc_system = [] # placeholder for marching cubes object
-            voxs, analytical_sa, analytical_vol = make_shape(v_size, lims, length, shapes[0])
-            
-            # create triangle mesh and assign voxels to triangles; read in mesh data
-            mc_system = MC_System(lims, ncells, v_size, voxs, name, file_no)
-            corner_volumes = mc_system.corner_volumes
-            faces = mc_system.faces
-            vertices = mc_system.verts
-            combined_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
-            stlFileName = './Grids/grid_{:d}.stl'.format(file_no)
-            combined_mesh.export(stlFileName, file_type='stl_ascii') 
-            
-            #write co-rdinate voxel data
-            np.savetxt('./voxel_data/voxel_data_{:d}.dat'.format(file_no), voxs, delimiter=',')
-            
-            vol_frac_c = np.sum(corner_volumes)/(ncells[0]*ncells[1]*ncells[2])
-            
-            #Write the file containing volume fraction of the material
-            f = open('./vol_frac.dat','w+')
-            f.write(str(vol_frac_c)+'\n')
-            f.close()
-            
-            print('All files written')
-            print('Surface ready for sparta run')
+            voxs_alt, analytical_sa, analytical_vol = make_shape(v_size, lims, length, shapes[0])
             
         else:
             if os.path.exists('vox2surf.surf'):
-                os.remove('vox2surf.surf')                # removing existing surface files
+                os.remove('vox2surf.surf')  # removing existing surface files
             
             ############## Read volume fraction, voxel and surface reaction data ###################
             
@@ -716,27 +699,25 @@ if __name__ == '__main__':
             prev_grid = trimesh.load('./Grids/grid_'+str(file_no-1)+'.stl')
             vertices = prev_grid.vertices
             faces = prev_grid.faces
-            #area = trimesh.load('Grids/grid_'+str(file_no-1)+'.stl').area
             
             normals = find_normals(file_no)
             areas = get_tri_area(faces,vertices)
             
             co_formed, areas_deleted = co_formation(vertices,normals,areas,mass_flux,timescale,file_no,v_size)
-            print('Sum of reacted C mass for all triangles: {:.2e}'.format(sum(co_formed[:,1])))
-            #Read voxel data
+            print('Sum of reacted C mass for all triangles: {:.2e}'.format(sum(co_formed[:])))
+            # Read voxel data
             with open('./voxel_data/voxel_data_'+str(file_no-1)+'.dat') as f:
                 lines = (line for line in f if not line.startswith('#'))
                 voxs_alt = np.loadtxt(lines, delimiter=',', skiprows=0)
                 voxs_plot = copy.deepcopy(voxs_alt)
             
-            #Calculate mass of Carbon associated with each voxel
+            # Calculate mass of Carbon associated with each voxel
             volfrac_c = float(vol_frac_c)
             vol_C = volfrac_c*(lims[1,0]-lims[0,0])**3
             mass_c = vol_C*1800
             mass_c_vox = mass_c/len(voxs_alt)
             
-            
-            #Calculate the mass of carbon removed from each voxel
+            # Calculate the mass of carbon removed from each voxel
             c_removed_vox = np.zeros((len(voxs_alt)))
             ntris = np.zeros((len(voxs_alt))).astype(int)
             for i in range(len(tri_voxs)):
@@ -744,35 +725,22 @@ if __name__ == '__main__':
                 sfracs = np.array((tri_sfracs[(i+1)]),dtype = float)
                 for k in range(len(vox_no)):
                     ntris[vox_no[k]] += 1
-                    c_removed_vox[vox_no[k]] += sfracs[k] * co_formed[i,1]
-
+                    c_removed_vox[vox_no[k]] += sfracs[k] * co_formed[i]
             
-            # #Mass of C removed
-            # mass_rate = timescale*mass_flux*(lims[1,0]-lims[0,0])**2
-            # mass_rate_c = mass_rate*12/28
-            # no_of_voxs_removed = int(mass_rate_c/mass_c_vox)
-            
-            # #Remove voxels
-            # voxs_alt = voxs_alt[no_of_voxs_removed:len(voxs_alt),:]
-            #Remove voxels
+            # Remove voxels
             vox_mass_sum = 0
             for i in range(len(c_removed_vox)):
                 vox_mass_sum += c_removed_vox[i]
                 if c_removed_vox[i] > 0.5*mass_c_vox: # 0.5 or 1
                     voxs_alt[i,:] = 0
-                    #print(c_removed_vox[i])
             voxs_alt = voxs_alt[~np.all(voxs_alt == 0, axis=1)]  
             
             print('Sum of reacted C mass for all voxels: {:.2e}'.format(vox_mass_sum))
 
-            #write csv files for paraview visualization
-            
+            # write csv files for paraview visualization
             write_csv_all(voxs_plot,c_removed_vox,co_formed,file_no,mass_c_vox,ntris)
-            
-            ##printing
-            
-            
-            #Print stats for debugging sparta simulation
+
+            # print stats for debugging sparta simulation
             print('\nPrint stats for debugging sparta simulation')
             print('----------------------------------------------\n')
             print('Critical mass of carbon associated with each voxel --', mass_c_vox)
@@ -781,24 +749,21 @@ if __name__ == '__main__':
             print('Total mass flux of carbon removed --', np.sum(c_removed_vox)/(np.sum(areas_deleted)*timescale))
             print('\n')
             
-            # create triangle mesh, assign voxels to triangles and save mesh
-            mc_system = MC_System(lims, ncells, v_size, voxs_alt, name, file_no)
-            corner_volumes = mc_system.corner_volumes
-            combined_mesh = trimesh.Trimesh(vertices=mc_system.verts, faces=mc_system.faces)
-            stlFileName = './Grids/grid_{:d}.stl'.format(file_no)
-            combined_mesh.export(stlFileName, file_type='stl_ascii') 
+        # create triangle mesh, assign voxels to triangles and save mesh
+        mc_system = MC_System(lims, ncells, v_size, voxs_alt, name, file_no)
+        corner_volumes = mc_system.corner_volumes
+        combined_mesh = trimesh.Trimesh(vertices=mc_system.verts, faces=mc_system.faces)
+        stlFileName = './Grids/grid_{:d}.stl'.format(file_no)
+        combined_mesh.export(stlFileName, file_type='stl_ascii') 
             
-            #write co-rdinate voxel data
-            f = open('./voxel_data/voxel_data_'+str(file_no)+'.dat','w+')
-            for i in range(len(voxs_alt)):
-                f.write(str(voxs_alt[i,0])+','+str(voxs_alt[i,1])+','+str(voxs_alt[i,2])+'\n')
-            f.close()
-            
-            #Write the file containing volume fraction of the material
-            vol_frac_c = np.sum(corner_volumes)/(ncells[0]*ncells[1]*ncells[2])
-            f = open('vol_frac.dat','w+')
-            f.write(str(vol_frac_c)+'\n')
-            f.close()
-            
-            print('All files written')
-            print('Surface ready for next iteration of sparta run')
+        # write co-rdinate voxel data
+        np.savetxt('./voxel_data/voxel_data_{:d}.dat'.format(file_no), voxs_alt, delimiter=',')
+
+        #Write the file containing volume fraction of the material
+        vol_frac_c = np.sum(corner_volumes)/(ncells[0]*ncells[1]*ncells[2])
+        f = open('vol_frac.dat','w+')
+        f.write(str(vol_frac_c)+'\n')
+        f.close()
+
+        print('All files written')
+        print('Surface ready for next sparta run')
