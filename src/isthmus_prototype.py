@@ -1,8 +1,7 @@
 import numpy as np
 import os
 import sys
-from scipy.spatial import ComplexHull
-# ComplexHull(np.array(points)).volume gives area in 2D
+import copy
 from Marching_Cubes import marching_cubes, mesh_surface_area
 
 # need csv, dev, grids, voxel_data, and voxel_tri folders
@@ -10,24 +9,182 @@ from Marching_Cubes import marching_cubes, mesh_surface_area
 #%% Individual geometric elements used in grids
 class Triangle:
     def __init__(self, verts, identity, ncell):
-        self.vertices = verts # [[x1, y1, z1], [x2,y2,z2], [x3,y3,z3]]
+        self.vertices = verts  # [[x1, y1, z1], [x2,y2,z2], [x3,y3,z3]]
         self.id = identity     # own triangle index
-        self.cell = ncell    # owning cell object
-        self.voxel_ids = [] # index of each owned voxel in global array
-        self.s_voxel_ids = [] # index of owned voxel in surface array
+        self.cell = ncell      # owning cell object
+        self.voxel_ids = []    # index of each owned voxel in global array
+        self.s_voxel_ids = []  # index of owned voxel in surface array
         self.voxel_scalar_fracs = [] # fraction of triangle values to assign to each voxel
         self.centroid = np.average(verts, axis=0)
+        # axis-aligned bounding box limits
+        trans_verts = np.transpose(self.vertices) # [[xs], [ys], [zs]]
+        self.lo = np.array([min(c) for c in trans_verts])
+        self.hi = np.array([max(c) for c in trans_verts])
         
         # basis vectors created from triangle
-        # transform triangle into basis vectors
-        self.u = self.vertices[1] - self.vertices[0]
-        self.v = self.vertices[2] - self.vertices[0]
-        n = np.cross(self.u, self.v)
+        u = self.vertices[1] - self.vertices[0]
+        v = self.vertices[2] - self.vertices[0]
+        n = np.cross(u, v)
         self.normal = n/np.linalg.norm(n) # outward normal
-        self.revert_matrix = np.transpose(np.array([self.u,self.v,self.normal])) # transform from tri basis to Cartesian
-        self.trans_matrix = np.linalg.inv(self.revert_matrix)                    # transform from Cartesian to tri basis
+
+    # distance to nearest point on triangle, by combining normal and planar components
+    def check_overlap(self, face):
+        # first check alignment of face with triangle (is the face visible to tri based on outward normals)
+        if (np.dot(face.n, self.normal) < 0):
+            return False, []
         
+        # project face onto triangle plane, should be a parallelogram (?)
+
+        proj_face = np.array([face.xs[i] - self.normal*np.dot(self.normal, face.xs[i] - self.vertices[0]) for i in range(4)])
+        trans_face = np.transpose(proj_face)
+        pf_lo = np.array([min(c) for c in trans_face])
+        pf_hi = np.array([max(c) for c in trans_face])
+
+        epsilon = 1e-3*Surface_Voxel.size
+        # then a fast AABB test between triangle and projected face
+        for i in range(3):
+            if (pf_lo[i] - self.hi[i] > epsilon or epsilon < self.lo[i] - pf_hi[i]):
+                return False, []
+
+        # then use the separating axis theorem; should be 5 possible separation axes (need to be normalized to unit?)
+        test_axes = [np.cross(self.vertices[2] - self.vertices[1], self.normal), # axes normal to each tri edge
+                     np.cross(self.vertices[1] - self.vertices[0], self.normal),
+                     np.cross(self.vertices[0] - self.vertices[2], self.normal),
+                     np.cross(proj_face[2]     - proj_face[1],     self.normal), # axes normal to parallelogram edges
+                     np.cross(proj_face[1]     - proj_face[0],     self.normal)]
+        
+        # project triangle and parallelogram onto each axis, see if separation is possible
+        for ax in test_axes:
+            tri_ax  = [np.dot(self.vertices[i], ax) for i in range(len(self.vertices))]
+            face_ax = [np.dot(proj_face[i], ax)     for i in range(len(proj_face))]
+
+            if (min(tri_ax) > max(face_ax) or max(tri_ax) < min(face_ax)):
+                return False, []
+
+        # if no axes are separable, there is overlap
+        return True, proj_face
+        
+    def get_intersection_area(self, proj_face):
+        clipped_points = clip_sh(proj_face, self) # find overlapping area
+        if len(clipped_points) < 3:
+            return 0
+        rotated_points = orient_polygon_xy(clipped_points, self.normal) # rotate overlap polygon into xy plane
+        return polygon_area(rotated_points) # get area with shoelace formula
+
+# Sutherland-Hodgman polygon clipping
+# inputs are vertices of subject (to be clipped) and vertices
+# of window (the clipper)
+def clip_sh(subject, clip_tri):
+    # first calculate an epsilon based on size of clipping window bounding box
+    # for floating point comparisons
+    epsilon = 1e-4*max([max(x) - min(x) for x in np.transpose(clip_tri.vertices)])
+
+    # clipping operation
+    in_pts = copy.deepcopy(subject)
+    out_pts = []
+    for i in range(len(clip_tri.vertices)):
+        clip_edge = clip_tri.vertices[i] - clip_tri.vertices[i - 1]
+        plane_normal = np.cross(clip_edge, clip_tri.normal)
+        plane_normal /= np.linalg.norm(plane_normal)
+        if (i != 0):
+            in_pts = copy.deepcopy(out_pts)
+        out_pts = []
+
+        for j in range(len(in_pts)):
+            p1 = in_pts[j - 1]
+            p2 = in_pts[j]
+
+            # compute intersection with infinite edge
+            p1_in, p2_in, intersect = segment_plane_intersection(p1, p2, plane_normal, clip_tri.vertices[i], epsilon)
+
+            if (p2_in):
+                if (not p1_in):
+                    out_pts.append(intersect)
+                out_pts.append(p2)
+            elif (p1_in):
+                out_pts.append(intersect)
+            # if p1 and p2 both outside, do nothing, delete line segment
+
+    # remove duplicate vertices
+    final_pts = []
+    for i in range(len(out_pts)):
+        dupe = False
+        for j in range(i + 1, len(out_pts)):
+            if (all(abs(out_pts[j] - out_pts[i]) < epsilon)):
+                dupe = True
+                break
+        if not dupe:
+            final_pts.append(out_pts[i])
+
+    return final_pts
+
+# for line segment of points p1 and p2, does it intersect plane defined by
+# outward unit normal n, passing through point q
+# return inside/outside determinations for p1,p2 and intersection point
+# 'in' means inside or on plane; out means strictly outside
+def segment_plane_intersection(p1, p2, n, q, epsilon):
+    intersect = np.zeros(3)
+    p1_dist = np.dot(p1 - q, n)
+    p2_dist = np.dot(p2 - q, n)
+
+    p1_in = False
+    p2_in = False
+    if (p1_dist < epsilon):
+        p1_in = True
+    if (p2_dist < epsilon):
+        p2_in = True
+    # if one in and other out,
+    if (p1_in + p2_in == 1):
+        if (p1_in):
+            if (abs(p1_dist) < epsilon):
+                intersect = p1
+            else:
+                frac = abs(p1_dist)/(abs(p2_dist) + abs(p1_dist))
+                intersect = p1 + frac*(p2 - p1)
+        # p2 is inside
+        else:
+            if (abs(p2_dist) < epsilon):
+                intersect = p2
+            else:
+                frac = abs(p1_dist)/(abs(p2_dist) + abs(p1_dist))
+                intersect = p1 + frac*(p2 - p1)
+
+    return p1_in, p2_in, intersect
+
+def orient_polygon_xy(verts, normal):
+    theta = np.arccos(normal[2])
+    epsilon = 1e-4
+    if (theta < epsilon or np.pi - theta < epsilon):
+        return np.array([[verts[i][0], verts[i][1]] for i in range(len(verts))])
+    else:
+        # need finite rotation to align polygon
+        # get unit vector of axis around which to rotate
+        axis = np.cross(normal, [0,0,1])
+        ax_len = np.sqrt(axis[0]**2 + axis[1]**2 + axis[2]**2)
+        axis /= ax_len
+
+        # theta is already known, and if i did my math right, it should always
+        # be a positive rotation; use 3D rotation matrix
+        R = np.outer(axis, axis)*(1 - np.cos(theta))
+        R += np.identity(3)*np.cos(theta)
+        R += np.array([ [       0, -axis[2],  axis[1]],
+                        [ axis[2],        0, -axis[0]],
+                        [-axis[1],  axis[0],        0]])*np.sin(theta)
+        return np.array([np.matmul(R, v)[:-1] for v in verts])
+
+
+# shoelace formula (trapezoid rule); for 2D XY POLYGONS ONLY
+def polygon_area(verts):
+    area = 0
+    for i in range(len(verts)):
+        p1 = verts[i - 1]
+        p2 = verts[i]
+        area += (p1[1] + p2[1])*(p1[0] - p2[0])
+
+    return abs(area*0.5)
+
 def get_tri_area(verts):
+
     # herons formula = sqrt(s(s - a)(s - b)(s - c)) for triangle lengths a,b,c, s= half-perimeter
     a = np.linalg.norm(verts[2] - verts[1])
     b = np.linalg.norm(verts[1] - verts[0])
@@ -52,44 +209,24 @@ def get_longest_side(verts):
         AC = [0, 2]
     return AC
 
-class Extended_Triangle(Triangle):
-    def __init__(self, base_tri): # argument is base triangle which are extended here
-        super().__init__(base_tri.vertices, base_tri.id, base_tri.cell)
-        l_ext = np.array([min(Surface_Voxel.size, 2*np.linalg.norm(base_tri.vertices[i] - self.centroid)) for i in range(3)])
-        
-        for v in range(3):
-            original_ext = base_tri.vertices[v] - self.centroid
-            self.vertices[v] = base_tri.vertices[v] + l_ext[v]*(original_ext)/np.linalg.norm(original_ext)
-        
-    # distance to nearest point on triangle, by combining normal and planar components
-    def distance_to_voxel(self, vox, c_length):
-        n_dist = np.dot(self.normal, vox.position - self.vertices[0])
-        v_proj = (vox.position - self.normal*n_dist)  # project voxel onto plane
-        trans_vox = np.matmul(self.trans_matrix, v_proj - self.vertices[0]) # projected voxel in triangle basis
-        
-        if (n_dist <= 0 and n_dist >= -c_length and \
-            trans_vox[0] >= 0 and trans_vox[1] >= 0 and trans_vox[1] <= 1 - trans_vox[0]):
-            
-            return -1, abs(n_dist)
-        else:
-            if (trans_vox[0] <= 0 or trans_vox[1] > trans_vox[0] + 1):
-                pn = np.array([0, np.clip(trans_vox[1], 0, 1), 0]) # on v-axis
-            elif (trans_vox[1] <= 0 or trans_vox[1] < trans_vox[0] - 1):
-                pn = np.array([np.clip(trans_vox[0], 0, 1), 0, 0]) # on u-axis
-            else:
-                n_h = np.array([1/np.sqrt(2), 1/np.sqrt(2), 0])    # on hypotenuse
-                pn = np.dot((trans_vox - [0, 1, 0]), n_h)
-                pn = trans_vox - pn*n_h
-            # return to normal Cartesian coordinates with original origin
-            contact_point = np.matmul(self.revert_matrix, pn) + self.vertices[0]
-            plane_dist = np.linalg.norm(v_proj - contact_point)
-            
-            return np.sqrt(plane_dist**2 + n_dist**2) , abs(n_dist)
-   
 class Surface_Voxel:
     size = 0
     def __init__(self, xs, index):
         self.position = xs
+        low_corner = np.array(xs - 0.5*Surface_Voxel.size)
+        # corners: first four are zlo x-y plane, then last four are zhi x-y plane
+        cs  =  [low_corner + np.array([0,0,0])*Surface_Voxel.size,
+                low_corner + np.array([1,0,0])*Surface_Voxel.size,
+                low_corner + np.array([0,1,0])*Surface_Voxel.size,
+                low_corner + np.array([1,1,0])*Surface_Voxel.size,
+                low_corner + np.array([0,0,1])*Surface_Voxel.size,
+                low_corner + np.array([1,0,1])*Surface_Voxel.size,
+                low_corner + np.array([0,1,1])*Surface_Voxel.size,
+                low_corner + np.array([1,1,1])*Surface_Voxel.size
+                ]
+        # axis-aligned bounding box
+        self.lo = cs[0]
+        self.hi = cs[-1]
         self.id = index   # own voxel index
         self.surf_id = Surface_Voxel.n_svoxels # voxel index in surface voxel list
         Surface_Voxel.n_svoxels += 1
@@ -97,6 +234,26 @@ class Surface_Voxel:
         self.closest_triangle_id = -1 # initialize to invalid id
         self.closest_triangle_dist = 1e12 # initialize to massive number
         self.closest_triangle_cell = -1 # initialize to invalid id
+        self.faces = []
+        self.faces.append(Voxel_Face(0, cs[2], cs[0], cs[4], cs[6])) # xlo
+        self.faces.append(Voxel_Face(1, cs[1], cs[3], cs[7], cs[5])) # xhi
+        self.faces.append(Voxel_Face(2, cs[0], cs[1], cs[5], cs[4])) # ylo
+        self.faces.append(Voxel_Face(3, cs[3], cs[2], cs[6], cs[7])) # yhi
+        self.faces.append(Voxel_Face(4, cs[2], cs[3], cs[1], cs[0])) # zlo
+        self.faces.append(Voxel_Face(5, cs[4], cs[5], cs[7], cs[6])) # zhi
+
+
+
+class Voxel_Face:
+    def __init__(self, tipo, x1, x2, x3, x4):
+        # type (tipo) is 0-5: xlo, xhi, ylo, yhi, zlo, zhi face
+        self.type = tipo
+        # corners in CCW order: bottom-left, bottom-right, top-right, top-left looking inwards
+        self.xs = [x1, x2, x3, x4]
+        # unit outward normal
+        self.n = np.cross(self.xs[1] - self.xs[0], self.xs[3] - self.xs[0])
+        self.n = self.n/np.sqrt(self.n[0]**2 + self.n[1]**2 + self.n[2]**2)
+        self.exposed = False
 
 # this class is for corners in the grid, i.e. each MC_Cell corresponds to
 # 8 MC_Corners
@@ -124,7 +281,7 @@ class MC_System:
     """
     def __init__(self, lims, ncells, voxel_size, voxels, name, call_no):
         print('Executing marching cubes...')
-        
+
         Surface_Voxel.n_svoxels = 0
         self.verts = []
         self.faces = []
@@ -149,7 +306,7 @@ class MC_System:
         self.write_surface(name)
         
         # find voxels on the surface and organize these surface voxels and triangles into cells
-        self.surface_voxels = self.sort_voxels()            
+        self.surface_voxels = self.sort_voxels()
         self.cell_grid = Cell_Grid(lims, ncells, self.surface_voxels, self.faces, self.verts)
         
         # associate voxels to triangles
@@ -235,6 +392,23 @@ class MC_System:
                     break
             progress_bar(v+1, len(voxs), 'finding surface voxels')
 
+        # for found surface voxels, determine which faces are exposed
+        for sv in surface_voxels:
+            v = sv.id
+            counter = 0
+            for d in range(3):
+                for i in range(-1, 2, 2):
+                    ind = list(vox_grid.get_indices(vox_elno[v]))
+                    ind[d] += i
+                    if (vox_grid.valid_element(ind)):
+                        other_ind = int(vox_grid.get_element(ind[0],ind[1],ind[2]))
+                        if (vox_grid.vox_space[other_ind] == -1):
+                            sv.faces[counter].exposed = True
+                    else:
+                        sv.faces[counter].exposed = True
+                    counter += 1
+            progress_bar(v+1, len(voxs), 'finding exposed voxel faces')
+
         return surface_voxels
     
     # produce surface with marching cubes from corner grid
@@ -247,7 +421,7 @@ class MC_System:
             corner_volumes[c][b][a] = cg.corners[n].volume # marching cubes requires [z,y,x] order
 
         verts, faces, normals, values = marching_cubes(volume= corner_volumes, level=0.5)
-
+        self.corner_volumes = corner_volumes
         self.verts = np.fliplr(verts) # marching_cubes() outputs in z,y,x order
         self.faces = faces
         # purging degenerates
@@ -360,7 +534,7 @@ class MC_System:
         surf_file.close() 
         
     def write_triangle_voxels(self,call_no):
-        f = open('triangle_voxels_'+str(call_no)+'.dat', 'w')
+        f = open('voxel_tri/triangle_voxels_'+str(call_no)+'.dat', 'w')
         f.write('{nt} total triangles\n\n'.format(nt = len(self.cell_grid.triangles)))
         for t in self.cell_grid.triangles:
             f.write('start id {ti}\n'.format(ti=t.id + 1))
@@ -526,70 +700,76 @@ class Cell_Grid(Grid):
             self.cells[n].triangles.append(self.triangles[-1])
     ## @}    
     
-    # STILL NEEDS CHANGING
-    # associate each voxel to 0 or 1 triangles, return this list
-    def voxels_to_triangles(self):
-        c_length = max(self.cell_length)*np.sqrt(3)*2 # twice the length of a cube's diagonal
-        
+    # associate each triangle to voxels based on inward normal view of voxel faces
+    def voxels_to_triangles(self):        
         # first assign voxels to each triangle in each cell
+        tfaces = 0
+        ttris = 0
         for c in self.cells:
             if len(c.triangles):
-                self.v2t_per_cell(c, c_length)
-            progress_bar(c.id + 1, len(self.cells), 'associating voxels    ')
-            
-        # make sure triangle-less voxels get at least one triangle
-        for c in self.cells:
-            for vox in c.surface_voxels:
-                if (len(vox.triangle_ids) == 0):
-                    for t in self.cells[vox.closest_triangle_cell].triangles:
-                        if (t.id == vox.closest_triangle_id):
-                            t.voxel_ids.append(vox.id)
-                            t.s_voxel_ids.append(vox.surf_id)
-                            vox.triangle_ids.append(t.id)
-                            break
-                        
-        # now get scalar fractions for each triangle's voxels
-        for t in self.triangles:
-            ntris_recip = np.array([1/len(self.surface_voxels[v].triangle_ids) for v in t.s_voxel_ids])
-            t.voxel_scalar_fracs = ntris_recip/ntris_recip.sum()
-            
-    def v2t_per_cell(self, c, c_length):
-        # collect all voxels in current and neighboring cells
-        ind = list(self.get_indices(c.id))
-        c_voxels = []
-        for ni in Cell_Grid.neighbor_increments:
-            n_ind = ind + ni
-            if (self.valid_element(n_ind)):
-                c_voxels += self.cells[self.get_element(n_ind[0], n_ind[1], n_ind[2])].surface_voxels
-        
-        # project an expanded surface triangle c_length in the inward direction; all voxels
-        # with centers in this projected region are assigned to that triangle
-        for t in c.triangles:
-            c_extri = Extended_Triangle(t)
-            
-            # check all current voxels against projected volume (enlarged triangle projected -c_length inward)
-            total_distance = []
-            for vox in c_voxels:
-                dist, n_dist = c_extri.distance_to_voxel(vox, c_length)
-                if dist == -1:
-                    vox.triangle_ids.append(t.id)
-                    t.voxel_ids.append(vox.id)
-                    t.s_voxel_ids.append(vox.surf_id)
-                    total_distance.append(n_dist)
-                else:
-                    total_distance.append(dist)
+                ttris += len(c.triangles)
+                # collect all voxels in current and neighboring cells
+                ind = list(self.get_indices(c.id))
+                c_voxels = []
+                for ni in Cell_Grid.neighbor_increments:
+                    n_ind = ind + ni
+                    if (self.valid_element(n_ind)):
+                        c_voxels += self.cells[self.get_element(n_ind[0], n_ind[1], n_ind[2])].surface_voxels
                 
-                if (total_distance[-1] < vox.closest_triangle_dist):
-                    vox.closest_triangle_id = t.id
-                    vox.closest_triangle_cell = c.id
-                    vox.closest_triangle_dist = total_distance[-1]
-            
-            # make sure voxel-less triangles get at least one voxel
-            if (len(t.voxel_ids) == 0):
-                ind = total_distance.index(min(total_distance))
-                t.voxel_ids.append(c_voxels[ind].id)
-                t.s_voxel_ids.append(c_voxels[ind].surf_id)
-                c_voxels[ind].triangle_ids.append(t.id)
+                # project eligible exposed voxel faces onto triangle plane and test for intersection
+                for t in c.triangles:
+                    sd = False
+                    if all(abs(t.normal - [0,0,-1]) < 1e-4):
+                        sd = True
+                    v_ids = []
+                    sv_ids = []
+                    v_areas = []
+                    t_area = get_tri_area(t.vertices)
+                    for vox in c_voxels:
+                        for f in vox.faces:
+                            if (f.exposed):
+                                # overlap, proj_f = t.check_overlap(f) # check if face is exposed to triangle and overlaps
+                                if (np.dot(f.n, t.normal) > 0):
+                                    centroid = np.sum(f.xs, axis=0)/len(f.xs)
+                                    #if (all(abs(centroid - [-2.1e-5, -2.1e-5, -2.5e-5]) < 0.7e-6) and sd):
+                                    if (sd and all(abs(f.n - [0,0,-1]) < 1e-4)):
+                                        b = 1
+                                    proj_f = np.array([f.xs[i] - t.normal*np.dot(t.normal, f.xs[i] - t.vertices[0]) for i in range(4)])
+                                    area = t.get_intersection_area(proj_f) # find area of overlap between projected face and triangle
+                                    vox.triangle_ids.append(t.id)
+                                    vox.triangle_ids = list(set(vox.triangle_ids)) # prevent duplicates in list
+                                    v_ids.append(vox.id)
+                                    sv_ids.append(vox.surf_id)
+                                    v_areas.append(area)
+
+                    # collect voxel face areas together
+                    tfaces += len(v_ids)
+                    for i in range(len(v_ids)):
+                        if (v_ids[i] in t.voxel_ids):
+                            ind = t.voxel_ids.index(v_ids[i])
+                            t.voxel_scalar_fracs[ind] += v_areas[i]
+                        else:
+                            if (v_areas[i] > t_area*1e-4):
+                                t.voxel_ids.append(v_ids[i])
+                                t.s_voxel_ids.append(sv_ids[i])
+                                t.voxel_scalar_fracs.append(v_areas[i])
+
+            #progress_bar(c.id + 1, len(self.cells), 'associating voxels    ')
+                        
+        # now normalize scalar fractions by total voxel face area intercepted by the triangle
+        low_area = 0
+        for t in self.triangles:
+            t.voxel_scalar_fracs = np.array(t.voxel_scalar_fracs)
+            total_area = t.voxel_scalar_fracs.sum()
+            if (total_area < 0.1*get_tri_area(t.vertices)):
+                low_area += 1
+                print('Uh oh, no voxel face area available for this triangle')
+                print(t.vertices)
+                print(t.voxel_scalar_fracs)
+                print()
+            t.voxel_scalar_fracs = t.voxel_scalar_fracs / total_area
+        if (low_area):
+            print('WARNING: {:.1f} % of triangles have (near-)zero area intersected by voxel faces'.format(100*low_area/len(self.triangles)))
 
 #%% Miscellaneous Functions
 

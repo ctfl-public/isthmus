@@ -8,11 +8,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import sys
-sys.path.insert(0, '../src/')
+sys.path.insert(0, '/project/sjpo228_uksr/EthanHuff/isthmus/src')
 from isthmus_prototype import MC_System
 import trimesh
 import subprocess
 import os
+import copy
 import platform
 import random
 import pickle
@@ -65,7 +66,7 @@ def read_output():
     tris = tris.set_index(tris.index.astype(int))
     
     
-    f = open('triangle_voxels_0.dat')
+    f = open('./voxel_tri/triangle_voxels_0.dat')
     tv_lines = f.readlines()
     f.close()
     
@@ -339,7 +340,7 @@ def test_isthmus(lims, ncells, size, shapes, iterations, v_size, name, rng):
 
     
     for u in range(len(shapes)):    
-        # generate voxels to be used by marching cubes
+        # generate voxels to be used by marching cubes, with surface area and volume of ideal geometry
         voxs, analytical_sa, analytical_vol = make_shape(v_size, lims, size, shapes[u])
         
         for it in range(iterations):
@@ -539,7 +540,7 @@ def get_tri_area(faces,vertices):
 
 def find_normals(file_no):
     normals = []
-    f=open('../Grids/grid_'+str(file_no-1)+'.stl','r')
+    f=open('./Grids/grid_'+str(file_no-1)+'.stl','r')
     for num, line in enumerate(f, 1):
         if 'facet normal' in line:
             s=tuple(line.split())
@@ -579,7 +580,7 @@ def write_csv_all(voxs_plot,c_removed_vox,co_formed,file_no,mass_c_vox,ntris):
         else:
             co_in_cell_plot[i,3] = 0
 
-    f = open('../csv/test_'+str(file_no)+'.csv','w+')
+    f = open('./csv/test_'+str(file_no)+'.csv','w+')
     for i in range(len(voxs_plot)):
         if i == 0:
             f.write('X,Y,Z,deleted,abl,ntris\n')
@@ -634,8 +635,11 @@ def safe_mkdir(path, name):
             print(err)
 
 #%% System initialization
+# ntris not right, nans in abl result from 0 area for these triangles, what's up?
+# give each cell access to any voxels whose corner(s) or center are inside
 if __name__ == '__main__':
-    pathg='/Users/vijaybmohan/Desktop/Cam/isthmus_latest/isthmus/testing/'
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    pathg= os.getcwd() + '/'
 
     safe_mkdir(pathg, 'Grids')
     safe_mkdir(pathg, 'voxel_data')
@@ -645,24 +649,10 @@ if __name__ == '__main__':
     safe_mkdir(pathg, 'Flowfiles')
 
     ############## IMPORTANT INPUT #############
-    ncells = np.array([50,50,50])
-    iterations = 1
-    v_size = 1*10**-6
-    s = ['ellipsoid']
-    lo = [-25*10**-6]*3
-    hi = [25*10**-6]*3
-    lims = np.array([lo, hi])
-    name = 'vox2surf.surf'
-    radius = 25*10**-6
-    rng = np.random.default_rng(999)
-    #############################################
-
-    ############## IMPORTANT INPUT #############
-    ncells = np.array([50,50,50])
-    iterations = 1
-    v_size = 1*10**-6
+    ncells = np.array([30, 30, 30])
+    iterations = 5
+    v_size = 2*10**-6
     shapes = ['cube']
-
     ###########################################
 
     domain = 2
@@ -678,7 +668,7 @@ if __name__ == '__main__':
     voxs = []
     analytical_vol = 0
 
-    for i in range(2):
+    for i in range(iterations):
         file_no = i
         print(i)
 
@@ -689,25 +679,21 @@ if __name__ == '__main__':
             voxs, analytical_sa, analytical_vol = make_shape(v_size, lims, length, shapes[0])
             
             # create triangle mesh and assign voxels to triangles; read in mesh data
-            print('Executing marching cubes...')
             mc_system = MC_System(lims, ncells, v_size, voxs, name, file_no)
             corner_volumes = mc_system.corner_volumes
             faces = mc_system.faces
             vertices = mc_system.verts
             combined_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
-            stlFileName = '../Grids/grid_'+str(file_no)+'.stl'
+            stlFileName = './Grids/grid_{:d}.stl'.format(file_no)
             combined_mesh.export(stlFileName, file_type='stl_ascii') 
             
             #write co-rdinate voxel data
-            f = open('../voxel_data/voxel_data_'+str(file_no)+'.dat','w+')
-            for i in range(len(voxs)):
-                f.write(str(voxs[i,0])+','+str(voxs[i,1])+','+str(voxs[i,2])+'\n')
-            f.close()
+            np.savetxt('./voxel_data/voxel_data_{:d}.dat'.format(file_no), voxs, delimiter=',')
             
             vol_frac_c = np.sum(corner_volumes)/(ncells[0]*ncells[1]*ncells[2])
             
             #Write the file containing volume fraction of the material
-            f = open('vol_frac.dat','w+')
+            f = open('./vol_frac.dat','w+')
             f.write(str(vol_frac_c)+'\n')
             f.close()
             
@@ -724,28 +710,24 @@ if __name__ == '__main__':
                 vol_frac_c = f.readline().strip('\n')
             
             #Read voxel_triangles
-            tri_voxs,tri_sfracs = read_voxel_tri('../voxel_tri/triangle_voxels_'+str(file_no-1)+'.dat')
+            tri_voxs,tri_sfracs = read_voxel_tri('./voxel_tri/triangle_voxels_'+str(file_no-1)+'.dat')
             
             #Construct dsmc reaction data
-            vertices = trimesh.load('../Grids/grid_'+str(file_no-1)+'.stl').vertices
-            faces = trimesh.load('../Grids/grid_'+str(file_no-1)+'.stl').faces
+            prev_grid = trimesh.load('./Grids/grid_'+str(file_no-1)+'.stl')
+            vertices = prev_grid.vertices
+            faces = prev_grid.faces
             #area = trimesh.load('Grids/grid_'+str(file_no-1)+'.stl').area
             
             normals = find_normals(file_no)
             areas = get_tri_area(faces,vertices)
             
-            
             co_formed, areas_deleted = co_formation(vertices,normals,areas,mass_flux,timescale,file_no,v_size)
             print('Sum of reacted C mass for all triangles: {:.2e}'.format(sum(co_formed[:,1])))
             #Read voxel data
-            with open('../voxel_data/voxel_data_'+str(file_no-1)+'.dat') as f:
+            with open('./voxel_data/voxel_data_'+str(file_no-1)+'.dat') as f:
                 lines = (line for line in f if not line.startswith('#'))
                 voxs_alt = np.loadtxt(lines, delimiter=',', skiprows=0)
-            
-            #Read voxel data for preparing csv file
-            with open('../voxel_data/voxel_data_'+str(file_no-1)+'.dat') as f:
-                lines = (line for line in f if not line.startswith('#'))
-                voxs_plot = np.loadtxt(lines, delimiter=',', skiprows=0)
+                voxs_plot = copy.deepcopy(voxs_alt)
             
             #Calculate mass of Carbon associated with each voxel
             volfrac_c = float(vol_frac_c)
@@ -783,7 +765,7 @@ if __name__ == '__main__':
             
             print('Sum of reacted C mass for all voxels: {:.2e}'.format(vox_mass_sum))
 
-            #write csv files for parview visualization
+            #write csv files for paraview visualization
             
             write_csv_all(voxs_plot,c_removed_vox,co_formed,file_no,mass_c_vox,ntris)
             
@@ -802,14 +784,12 @@ if __name__ == '__main__':
             # create triangle mesh, assign voxels to triangles and save mesh
             mc_system = MC_System(lims, ncells, v_size, voxs_alt, name, file_no)
             corner_volumes = mc_system.corner_volumes
-            faces = mc_system.faces
-            vertices = mc_system.verts
-            combined_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
-            stlFileName = '../Grids/grid_'+str(file_no)+'.stl'
+            combined_mesh = trimesh.Trimesh(vertices=mc_system.verts, faces=mc_system.faces)
+            stlFileName = './Grids/grid_{:d}.stl'.format(file_no)
             combined_mesh.export(stlFileName, file_type='stl_ascii') 
             
             #write co-rdinate voxel data
-            f = open('../voxel_data/voxel_data_'+str(file_no)+'.dat','w+')
+            f = open('./voxel_data/voxel_data_'+str(file_no)+'.dat','w+')
             for i in range(len(voxs_alt)):
                 f.write(str(voxs_alt[i,0])+','+str(voxs_alt[i,1])+','+str(voxs_alt[i,2])+'\n')
             f.close()

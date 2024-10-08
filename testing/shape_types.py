@@ -49,7 +49,7 @@ class Cube():
         return 6*(self.hlength*2)**2
     
     def get_shape_volume(self):
-        return (self.size*2)**3
+        return (self.hlength*2)**3
     
 def make_shape(v_size, lims, size, shape):
     print('Generating '+ shape + ' volume of voxels...', end='')
