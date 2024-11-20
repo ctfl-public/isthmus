@@ -4,6 +4,7 @@ import sys
 import time
 import copy
 from Marching_Cubes import marching_cubes, mesh_surface_area
+from scipy.spatial import cKDTree
 
 # need csv, dev, grids, voxel_data, and voxel_tri folders
 
@@ -450,15 +451,16 @@ class MC_System:
         # purging degenerates
         # 1. Points cannot be duplicates of each other
 
+        # Create a KDTree for efficient nearest-neighbor lookup
+        tree = cKDTree(self.verts)
         p_eps = 1e-5 # this is a small epsilon to determine if points are the 'same'
-        dupes = (np.ones(len(self.verts))*-1).astype(int) # -1 not duplicate, otherwise index of what it duplicates
-        # find all duplicate points
-        for i in range(len(self.verts)):
-            if (dupes[i] == -1):
-                for j in range(i + 1, len(self.verts)):
-                    if (dupes[j] == -1):
-                        if (max(abs(self.verts[j] - self.verts[i])) < p_eps):
-                            dupes[j] = i
+        duplicates = tree.query_pairs(p_eps)
+        
+        # Initialize duplicates array with -1 values
+        # -1 not duplicate, otherwise index of what it duplicates
+        dupes = np.full(len(self.verts), -1, dtype=int)
+        for i, j in duplicates:
+            dupes[j] = i
 
         # replace all duplicate points with 'original' point
         revealed_faces = np.array([p if dupes[p] == -1 else dupes[p] for p in self.faces.flatten()])
