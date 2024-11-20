@@ -259,6 +259,13 @@ class Voxel_Face:
 # this class is for corners in the grid, i.e. each MC_Cell corresponds to
 # 8 MC_Corners
 class MC_Corner:
+    """
+    Parameters
+    ----------
+    p: corner position
+    
+    i, j, k: indices in grid
+    """
     ## @param p corner position
     def __init__(self, p, i, j, k):
         self.position = p # [x,y,z]
@@ -275,10 +282,25 @@ class MC_Cell:
         self.id = i       # index in cell_grid
 
 #%% Main system class where all the magic happens
-
 class MC_System:  
     """! @brief Holder of the keys of the kingdom
     Welcome to the isthmus experience! This program assumes minimal overlap of pixels,
+    
+    Parameter
+    ---------
+    lims: [lo, hi] array
+        The bounding box enclosing the geometry. A 2x3 numpy array representing the domain limits of the grid in 3D space. 
+    ncells: [nx, ny, nz] integers
+        No. of cells in x, y, and z directions.
+    voxel_size: float
+        Voxel edge length.
+    voxels: [[x, y, z], ...] ndarray
+        Array of voxels positions.
+    name: 
+        Name of output surface file.
+    call_no:
+        Call number to append with the output file that associate triangles to voxels. 
+
     """
     def __init__(self, lims, ncells, voxel_size, voxels, name, call_no):
         print('Executing marching cubes...')
@@ -587,6 +609,30 @@ class Voxel_Grid(Grid):
     
 # grid of corners, used to feed volume fractions to marching cubes function
 class Corner_Grid(Grid):
+    """
+    Represents a 3D grid of corner points where each corner stores information about voxel assignments and volume fractions. 
+    
+    Attributes:
+    ----------
+    lims: 
+    A 2x3 numpy array representing the domain limits of the grid in 3D space. 
+    It contains the lower (lims[0]) and upper (lims[1]) bounds for the x, y, and z directions.
+
+    dims: 
+    A numpy array representing the number of cells along each dimension (x, y, z). 
+    This helps define how many corner points are in the grid.
+
+    cell_length: 
+    This represents the distance between corners along each dimension (x, y, z). 
+    It is computed from the domain limits and dimensions.
+
+    corners: 
+    A list containing instances of the MC_Corner class. 
+    Each MC_Corner represents a corner point in the 3D grid and contains information like position and volume.
+
+    coords: 
+    A list containing all possible coordinates for the x, y, and z dimensions, defining the positions of all corners within the grid.
+    """
     def __init__(self, lims, dims, voxels, voxel_size):
         print('Dividing voxel volumes for surface creation...')
         super().__init__(lims, dims)
