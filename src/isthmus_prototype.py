@@ -428,7 +428,7 @@ class MC_System:
         # purging degenerates
         # 1. Points cannot be duplicates of each other
 
-        p_eps = 1e-5 # this is a small epsilon to determine if points are the 'same'
+        p_eps = 1e-5 # this is a small epsilon to determine if points are the 'same'      #### need to be changed according voxel resolution
         dupes = (np.ones(len(self.verts))*-1).astype(int) # -1 not duplicate, otherwise index of what it duplicates
         # find all duplicate points
         for i in range(len(self.verts)):
@@ -447,7 +447,7 @@ class MC_System:
         # reassign vertices after transformation
         # 3. Triangles cannot be degenerate (collinear)
         #       3a. separate degenerates from full triangles
-        area_eps = 1e-6 # if area less than this, it's 'zero'
+        area_eps = 1e-6 # if area less than this, it's 'zero'              #### need to be changed according voxel resolution
         degen_tris = []
         degen_edges = []
         full_tris = []
@@ -738,7 +738,7 @@ class Cell_Grid(Grid):
                             ind = t.voxel_ids.index(v_ids[i])
                             t.voxel_scalar_fracs[ind] += v_areas[i]
                         else:
-                            if (v_areas[i] > t_area*1e-4):
+                            if (v_areas[i] > t_area*1e-4):                      #### need to be changed according voxel resolution
                                 t.voxel_ids.append(v_ids[i])
                                 t.s_voxel_ids.append(sv_ids[i])
                                 t.voxel_scalar_fracs.append(v_areas[i])
@@ -750,7 +750,7 @@ class Cell_Grid(Grid):
         for t in self.triangles:
             t.voxel_scalar_fracs = np.array(t.voxel_scalar_fracs)
             total_area = t.voxel_scalar_fracs.sum()
-            if (total_area < 0.1*get_tri_area(t.vertices)):
+            if (total_area < 0.1*get_tri_area(t.vertices)):                       #### need to be changed according voxel resolution   
                 low_area += 1
                 print('Uh oh, no voxel face area available for this triangle')
                 print(t.vertices)
