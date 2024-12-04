@@ -617,6 +617,8 @@ else:
     print('Mass of carbon associated with each voxel --', mass_c_vox)
     print('Maximum of co_formed on each surface --', max(co_formed[:,1]))
     print('Number of voxels deleted this iteration --', len(voxs_plot)-len(voxs_alt))
+    print('Mass of carbon loss obtained from DSMC --', np.sum(co_formed[:,1]))
+    print('Mass of carbon loss assigned to all voxels --', np.sum(c_removed_vox[:]))
     print('\n')
     
     #test qudrant
