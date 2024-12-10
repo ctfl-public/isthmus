@@ -29,6 +29,9 @@ class Triangle:
         n = np.cross(u, v)
         self.normal = n/np.linalg.norm(n) # outward normal
 
+        # epsilon based on triangle size for floating point comparisons
+        self.epsilon = 1e-4*max([max(x) - min(x) for x in np.transpose(self.vertices)])
+
     # distance to nearest point on triangle, by combining normal and planar components
     def check_overlap(self, face):
         # first check alignment of face with triangle (is the face visible to tri based on outward normals)
@@ -77,10 +80,6 @@ class Triangle:
 # inputs are vertices of subject (to be clipped) and vertices
 # of window (the clipper)
 def clip_sh(subject, clip_tri):
-    # first calculate an epsilon based on size of clipping window bounding box
-    # for floating point comparisons
-    epsilon = 1e-4*max([max(x) - min(x) for x in np.transpose(clip_tri.vertices)])
-
     # clipping operation
     in_pts = copy.deepcopy(subject)
     out_pts = []
@@ -97,7 +96,7 @@ def clip_sh(subject, clip_tri):
             p2 = in_pts[j]
 
             # compute intersection with infinite edge
-            p1_in, p2_in, intersect = segment_plane_intersection(p1, p2, plane_normal, clip_tri.vertices[i], epsilon)
+            p1_in, p2_in, intersect = segment_plane_intersection(p1, p2, plane_normal, clip_tri.vertices[i], clip_tri.epsilon)
 
             if (p2_in):
                 if (not p1_in):
@@ -112,7 +111,7 @@ def clip_sh(subject, clip_tri):
     for i in range(len(out_pts)):
         dupe = False
         for j in range(i + 1, len(out_pts)):
-            if (all(abs(out_pts[j] - out_pts[i]) < epsilon)):
+            if (all(abs(out_pts[j] - out_pts[i]) < clip_tri.epsilon)):
                 dupe = True
                 break
         if not dupe:
