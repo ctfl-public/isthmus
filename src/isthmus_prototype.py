@@ -81,14 +81,13 @@ class Triangle:
 # of window (the clipper)
 def clip_sh(subject, clip_tri):
     # clipping operation
-    in_pts = copy.deepcopy(subject)
+    in_pts = subject
     out_pts = []
     for i in range(len(clip_tri.vertices)):
         clip_edge = clip_tri.vertices[i] - clip_tri.vertices[i - 1]
         plane_normal = np.cross(clip_edge, clip_tri.normal)
         plane_normal /= np.linalg.norm(plane_normal)
-        if (i != 0):
-            in_pts = copy.deepcopy(out_pts)
+        
         out_pts = []
 
         for j in range(len(in_pts)):
@@ -106,7 +105,8 @@ def clip_sh(subject, clip_tri):
                 out_pts.append(intersect)
             # if p1 and p2 both outside, do nothing, delete line segment
 
-    # remove duplicate vertices
+        in_pts = out_pts
+
     final_pts = []
     for i in range(len(out_pts)):
         dupe = False
