@@ -32,6 +32,10 @@ class Triangle:
         # epsilon based on triangle size for floating point comparisons
         self.epsilon = 1e-4*max([max(x) - min(x) for x in np.transpose(self.vertices)])
 
+        # precompute triangle edges normals to be used in clip_sh
+        plane_normal = [np.cross(self.vertices[i]-self.vertices[i-1], self.normal) for i in range(3)]
+        self.plane_normal = [n / np.linalg.norm(n) for n in plane_normal]
+
     # distance to nearest point on triangle, by combining normal and planar components
     def check_overlap(self, face):
         # first check alignment of face with triangle (is the face visible to tri based on outward normals)
@@ -82,26 +86,20 @@ class Triangle:
 def clip_sh(subject, clip_tri):
     # clipping operation
     in_pts = subject
-    out_pts = []
-    for i in range(len(clip_tri.vertices)):
-        clip_edge = clip_tri.vertices[i] - clip_tri.vertices[i - 1]
-        plane_normal = np.cross(clip_edge, clip_tri.normal)
-        plane_normal /= np.linalg.norm(plane_normal)
-        
+    for i in range(3):
         out_pts = []
-
         for j in range(len(in_pts)):
             p1 = in_pts[j - 1]
             p2 = in_pts[j]
 
             # compute intersection with infinite edge
-            p1_in, p2_in, intersect = segment_plane_intersection(p1, p2, plane_normal, clip_tri.vertices[i], clip_tri.epsilon)
+            p1_in, p2_in, intersect = segment_plane_intersection(p1, p2, clip_tri.plane_normal[i], clip_tri.vertices[i], clip_tri.epsilon)
 
             if (p2_in):
                 if (not p1_in):
                     out_pts.append(intersect)
                 out_pts.append(p2)
-            elif (p1_in):
+            elif (p1_in):   # and not p2_in
                 out_pts.append(intersect)
             # if p1 and p2 both outside, do nothing, delete line segment
 
@@ -761,10 +759,10 @@ class Cell_Grid(Grid):
                 
                 # project eligible exposed voxel faces onto triangle plane and test for intersection
                 for t in c.triangles:
-                    v_ids = []
-                    sv_ids = []
-                    v_areas = []
-                    t_area = get_tri_area(t.vertices)
+                    v_ids = []      # voxel ids 
+                    sv_ids = []     # surface voxel ids
+                    v_areas = []    # intersected area
+                    t_area = get_tri_area(t.vertices)   # triangle area
                     for vox in c_voxels:
                         for f in vox.faces:
                             if (f.exposed):
