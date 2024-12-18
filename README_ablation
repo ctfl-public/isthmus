@@ -1,0 +1,104 @@
+####################################################################################################
+#                                                                                                  #
+#                                  README file for ISTHMUS - ABLATE                                #
+#                                           Property of CTFL                                       #
+#                                                                                                  #
+####################################################################################################
+
+
+The README file is divided into four sections -
+
+1. Installation - build DSMC and ISTHMUS
+2. Setup - change paths
+3. Run ISTHMUS framework - example
+4. General case
+
+
+####################################################################################################
+#                                                                                                  #
+#                                             Installation                                         #
+#                                           Property of CTFL                                       #
+#                                                                                                  #
+####################################################################################################
+
+
+Step 1: Get access to hypersonic git repos of CTFL (DSMC,ISTHMUS and ISTHMUS ABLATE)
+
+Step 2: Build DSMC:
+	1. Clone DSMC on your local machine - git clone ssh://git@git-hypersonics.engr.uky.edu:2222/dsmc
+	2. Change the branch to "isthmus_ablate". This branch contains necessary changes to couple DSMC with ISTHMUS.
+	3. Navigate to source folder and build DSMC.
+
+Step 3: Build ISTHMUS:
+	1. Clone ISTHMUS on your local machine - git clone ssh://git@git-hypersonics.engr.uky.edu:2222/isthmus
+	2. ISTHMUS package includes an open source build of marching cubes which must be compiled before moving forward.
+	3. Compilation of marching cubes requires number of python libraries. It is highly recommnded to create a virtual environment through conda.
+	4. Use the "environment.yml" in the source folder to create a new python environment and install the necessary dependencies using the command "conda env create -n <new env name> -f environment.yml".
+	5. Compile marching cubes using "python -W ignore setup.py build_ext --inplace". Ignore the warnings.
+
+
+
+####################################################################################################
+#                                                                                                  #
+#                                                 Setup                                            #
+#                                           Property of CTFL                                       #
+#                                                                                                  #
+####################################################################################################
+
+
+Step 1: Clone isthmus-ablation repo to access the ablation script - git clone ssh://git@git-hypersonics.engr.uky.edu:2222/isthmus-ablation. We will be working with the file named "mc_isthmus_ablate.py" which couples the DSMC with ISTHMUS framework. The file will be referred to as ablation script from now on.
+
+Step 2: Change the shebang line at the top of the ablation script to point at the python environment containing all the necessary libraries for running ISTHMUS (Refer to "Build ISTHMUS" section of Installation for more information).
+
+Step 3: Refer to line 12 of the ablation script and change the path pointing at the source folder of ISTHMUS build according to your needs.
+
+Step 4. Place the ablation script "mc_isthmus_ablate.py" in the folder containing your ablation sample.
+
+Step 5: Change the path of the simulation folder at the beginning of "main" function in the ablation script.
+
+
+####################################################################################################
+#                                                                                                  #
+#                                        Run ISTHMUS - Framework                                   #
+#                                           Property of CTFL                                       #
+#                                                                                                  #
+####################################################################################################
+
+
+This section will be explained with a default example. Necessary changes to the ablation script required to run a general case will be explained later.
+
+Step 1: Access one of the sample cases from the "examples" folder in the isthmus-ablation repo.
+
+Step 2: Refer to line 61 of the "dsmc.input" (input script for dsmc) file and change the path pointing at "mc_isthmus_ablate.py" as per your needs.
+
+Step 3: Refer to the setup section and perform necessary edits in the ablation script "mc_isthmus_ablate.py".
+
+Step 4: If the shebang line of the ablation script is changed according to step 1 of the setup secton, the ablation script can be run as an executable. If not, please do "chmod +x mc_isthmus_ablate.py" and try again.
+
+Step 5: Initialize the ablation simulation by executing the command "./mc_isthmus_ablate.py 0 0". The dummy arguments "0 0" are just place holders and have no effect during the initialization stage. DSMC passes necessary variables automatically during the ablation simulation.
+
+Step 6: The initialization command creates the surface mesh and necessary folders/files required to run the ablation simulation (make sure you have changed all the paths properly as indicated above!!).
+
+Step 7: Run the DSMC executable file to start the ablation simulation. The number of ISTHMUS loops (geometry updates) can be changed at line 49 of "dsmc.input".
+
+Step 8: Refer to the files in folders "Flowfiles" and "Grids" for postprocessing. Files in folder "csv" can be referred to visualize and debug the voxel deletion process.
+
+
+####################################################################################################
+#                                                                                                  #
+#                                             General case                                         #
+#                                           Property of CTFL                                       #
+#                                                                                                  #
+####################################################################################################
+
+
+This section provides a brief explanation of possible changes to the ablation script "mc_isthmus_ablate.py" without the intervention of ISTHMUS devs.
+
+
+Step 1: Refer to "choose test case section" of the "main" function to change the marching cube parameters (bounding boxes, voxel resolution and grid) depending on the sample of interest.
+
+Step 2: Refer to "Sparta variables" section of the "main" function to change the DSMC variables and coupling time "timescale" as required. A general rule is to scale the coupling time according to bounding boxes. A "timescale" of unity is sufficient if the domain of the sample is expressed in micro meters.
+
+Step 3: Refer to the "initialization loop" to change the name of the file used to load the voxel representation of your sample. A nested "for loop" following the name change can be tweaked to modify the binary matrix sent to marching cubes for surface creation.      
+
+
