@@ -309,7 +309,7 @@ def voxel_association_test():
     # cell length = 1e-7
     gl = 2e-6
     ref = 20
-    clength = gl/20
+    clength = gl/ref
 
     # get a cube roughly 2/3 the length of grid (1.32e-6)
     nline = 26
@@ -412,6 +412,7 @@ def voxel_association_test():
             cv = face_voxels[i][fv]
             if (abs(vox_vals[cv] - kvt*(vox_face_area/tri_area)) > epsilon):
                 print('face {}: {}, {}'.format(i + 1, vox_vals[cv], kvt*(vox_face_area/tri_area)))
+                return False
 
     return True
 
