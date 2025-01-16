@@ -29,6 +29,13 @@ class Triangle:
         n = np.cross(u, v)
         self.normal = n/np.linalg.norm(n) # outward normal
 
+        # epsilon based on triangle size for floating point comparisons
+        self.epsilon = 1e-4*max([max(x) - min(x) for x in np.transpose(self.vertices)])
+
+        # precompute triangle edges normals to be used in clip_sh
+        plane_normal = [np.cross(self.vertices[i]-self.vertices[i-1], self.normal) for i in range(3)]
+        self.plane_normal = [n / np.linalg.norm(n) for n in plane_normal]
+
     # distance to nearest point on triangle, by combining normal and planar components
     def check_overlap(self, face):
         # first check alignment of face with triangle (is the face visible to tri based on outward normals)
@@ -77,42 +84,32 @@ class Triangle:
 # inputs are vertices of subject (to be clipped) and vertices
 # of window (the clipper)
 def clip_sh(subject, clip_tri):
-    # first calculate an epsilon based on size of clipping window bounding box
-    # for floating point comparisons
-    epsilon = 1e-4*max([max(x) - min(x) for x in np.transpose(clip_tri.vertices)])
-
     # clipping operation
-    in_pts = copy.deepcopy(subject)
-    out_pts = []
-    for i in range(len(clip_tri.vertices)):
-        clip_edge = clip_tri.vertices[i] - clip_tri.vertices[i - 1]
-        plane_normal = np.cross(clip_edge, clip_tri.normal)
-        plane_normal /= np.linalg.norm(plane_normal)
-        if (i != 0):
-            in_pts = copy.deepcopy(out_pts)
+    in_pts = subject
+    for i in range(3):
         out_pts = []
-
         for j in range(len(in_pts)):
             p1 = in_pts[j - 1]
             p2 = in_pts[j]
 
             # compute intersection with infinite edge
-            p1_in, p2_in, intersect = segment_plane_intersection(p1, p2, plane_normal, clip_tri.vertices[i], epsilon)
+            p1_in, p2_in, intersect = segment_plane_intersection(p1, p2, clip_tri.plane_normal[i], clip_tri.vertices[i], clip_tri.epsilon)
 
             if (p2_in):
                 if (not p1_in):
                     out_pts.append(intersect)
                 out_pts.append(p2)
-            elif (p1_in):
+            elif (p1_in):   # and not p2_in
                 out_pts.append(intersect)
             # if p1 and p2 both outside, do nothing, delete line segment
 
-    # remove duplicate vertices
+        in_pts = out_pts
+
     final_pts = []
     for i in range(len(out_pts)):
         dupe = False
         for j in range(i + 1, len(out_pts)):
-            if (all(abs(out_pts[j] - out_pts[i]) < epsilon)):
+            if (all(abs(out_pts[j] - out_pts[i]) < clip_tri.epsilon)):
                 dupe = True
                 break
         if not dupe:
@@ -458,8 +455,28 @@ class MC_System:
         # Initialize duplicates array with -1 values
         # -1 not duplicate, otherwise index of what it duplicates
         dupes = np.full(len(self.verts), -1, dtype=int)
+
+        # Union-Find data structure
+        parent = np.arange(len(self.verts))
+        def find(x):
+            while x != parent[x]:
+                parent[x] = parent[parent[x]]  # Path compression
+                x = parent[x]
+            return x
+        def union(x, y):
+            root_x = find(x)
+            root_y = find(y)
+            if root_x != root_y:
+                parent[root_y] = root_x
         for i, j in duplicates:
-            dupes[j] = i
+            union(i, j)
+
+        # Assign each point to its duplicate root, to make sure no duplicates are left
+        for i in range(len(dupes)):
+            root = find(i)
+            if root != i:
+                dupes[i] = root
+
         # replace all duplicate points with 'original' point
         revealed_faces = np.array([p if dupes[p] == -1 else dupes[p] for p in self.faces.flatten()])
         revealed_faces.resize((len(self.faces), 3))
@@ -762,10 +779,10 @@ class Cell_Grid(Grid):
                 
                 # project eligible exposed voxel faces onto triangle plane and test for intersection
                 for t in c.triangles:
-                    v_ids = []
-                    sv_ids = []
-                    v_areas = []
-                    t_area = get_tri_area(t.vertices)
+                    v_ids = []      # voxel ids 
+                    sv_ids = []     # surface voxel ids
+                    v_areas = []    # intersected area
+                    t_area = get_tri_area(t.vertices)   # triangle area
                     for vox in c_voxels:
                         for f in vox.faces:
                             if (f.exposed):
