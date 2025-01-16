@@ -455,8 +455,28 @@ class MC_System:
         # Initialize duplicates array with -1 values
         # -1 not duplicate, otherwise index of what it duplicates
         dupes = np.full(len(self.verts), -1, dtype=int)
+
+        # Union-Find data structure
+        parent = np.arange(len(self.verts))
+        def find(x):
+            while x != parent[x]:
+                parent[x] = parent[parent[x]]  # Path compression
+                x = parent[x]
+            return x
+        def union(x, y):
+            root_x = find(x)
+            root_y = find(y)
+            if root_x != root_y:
+                parent[root_y] = root_x
         for i, j in duplicates:
-            dupes[j] = i
+            union(i, j)
+
+        # Assign each point to its duplicate root, to make sure no duplicates are left
+        for i in range(len(dupes)):
+            root = find(i)
+            if root != i:
+                dupes[i] = root
+
         # replace all duplicate points with 'original' point
         revealed_faces = np.array([p if dupes[p] == -1 else dupes[p] for p in self.faces.flatten()])
         revealed_faces.resize((len(self.faces), 3))
