@@ -320,7 +320,7 @@ class MC_System:
         
         # initialize system variables
         self.voxels = voxels
-        Surface_Voxel.size = voxel_size
+        Surface_Voxel.size = voxel_size/voxel_size               ###### scale voxel size used for tolerance according to the voxel co-ordinates and bounding box
         
         # prepare marching cubes volume grid, and create mesh
         self.corner_grid = Corner_Grid(lims, ncells + 1, self.voxels, Surface_Voxel.size)       
@@ -446,7 +446,7 @@ class MC_System:
             a,b,c = cg.get_indices(n)
             corner_volumes[c][b][a] = cg.corners[n].volume # marching cubes requires [z,y,x] order
 
-        verts, faces, normals, values = marching_cubes(volume= corner_volumes, level=0.5)
+        verts, faces, normals, values = marching_cubes(volume= corner_volumes, level=None)
         self.corner_volumes = corner_volumes
         self.verts = np.fliplr(verts) # marching_cubes() outputs in z,y,x order
         self.faces = faces
@@ -454,7 +454,7 @@ class MC_System:
         # 1. Points cannot be duplicates of each other
         # Create a KDTree for efficient nearest-neighbor lookup
         tree = cKDTree(self.verts)
-        p_eps = 1e-7*voxel_size # this is a small epsilon to determine if points are the 'same'
+        p_eps = 1e-4###(no need for this since vox res will always be 1)*voxel_size # this is a small epsilon to determine if points are the 'same'
         duplicates = tree.query_pairs(p_eps)
         
         # Initialize duplicates array with -1 values
@@ -491,7 +491,7 @@ class MC_System:
         # reassign vertices after transformation
         # 3. Triangles cannot be degenerate (collinear)
         #       3a. separate degenerates from full triangles
-        area_eps = 1e-8*voxel_size # if area less than this, it's 'zero'              #### need to be changed according voxel resolution
+        area_eps = 1e-5###(no need for this since vox res will always be 1)*voxel_size # if area less than this, it's 'zero'              #### need to be changed according voxel resolution
         degen_tris = []
         degen_edges = []
         full_tris = []
@@ -808,7 +808,7 @@ class Cell_Grid(Grid):
                             ind = t.voxel_ids.index(v_ids[i])
                             t.voxel_scalar_fracs[ind] += v_areas[i]
                         else:
-                            if (v_areas[i] > t_area*1e-6):                      
+                            if (v_areas[i] > t_area*1e-3):                      
                                 t.voxel_ids.append(v_ids[i])
                                 t.s_voxel_ids.append(sv_ids[i])
                                 t.voxel_scalar_fracs.append(v_areas[i])
@@ -820,7 +820,7 @@ class Cell_Grid(Grid):
         for t in self.triangles:
             t.voxel_scalar_fracs = np.array(t.voxel_scalar_fracs)
             total_area = t.voxel_scalar_fracs.sum()
-            if (total_area < 1e-6*get_tri_area(t.vertices)):                         
+            if (total_area < 1e-3*get_tri_area(t.vertices)):                         
                 low_area += 1
                 print('Uh oh, no voxel face area available for this triangle')
                 print(t.vertices)
