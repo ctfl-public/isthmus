@@ -302,6 +302,9 @@ class MC_System:
     """
     def __init__(self, lims, ncells, voxel_size, voxels, name, call_no):
         print('Executing marching cubes...')
+        
+        lims = lims/voxel_size
+        voxels = voxels/voxel_size                                ####### scaling of voxels and bounding box with respect to the lowest value for making marching windows independent of precision error
 
         Surface_Voxel.n_svoxels = 0
         self.verts = []
@@ -324,7 +327,7 @@ class MC_System:
         self.create_surface(voxel_size)
         
         # write SPARTA-compliant surface
-        self.write_surface(name)
+        self.write_surface(name,voxel_size)
         
         # find voxels on the surface and organize these surface voxels and triangles into cells
         self.surface_voxels = self.sort_voxels()
@@ -332,6 +335,8 @@ class MC_System:
         
         # associate voxels to triangles
         self.write_triangle_voxels(call_no)
+        self.verts = self.verts*voxel_size                     ####### scale back the vertices of the triangular mesh to its original size
+
         
     ## check validity of grid limits and number of cells
     def check_grid(self, lims, ncells):
@@ -555,7 +560,8 @@ class MC_System:
         self.verts += translations
     
     # write surface of triangles to disk, the argument is the name of the file
-    def write_surface(self, name):
+    def write_surface(self, name, voxel_size):
+        self.verts = self.verts*voxel_size                                                     
         """! @warning Don't use naughty words for the filename or Vikram will be mad
         """
         print('Writing SPARTA file of surface...')
@@ -571,7 +577,8 @@ class MC_System:
         for i in range(len(self.faces)):
             surf_file.write('{b} {p1} {p2} {p3}\n'.format(b = i + 1, p1 = self.faces[i][0] + 1, \
                                                         p2 = self.faces[i][1] + 1, p3 = self.faces[i][2] + 1)) 
-        surf_file.close() 
+        surf_file.close()
+        self.verts = self.verts/voxel_size 
         
     def write_triangle_voxels(self,call_no):
         f = open('voxel_tri/triangle_voxels_'+str(call_no)+'.dat', 'w')
@@ -801,7 +808,7 @@ class Cell_Grid(Grid):
                             ind = t.voxel_ids.index(v_ids[i])
                             t.voxel_scalar_fracs[ind] += v_areas[i]
                         else:
-                            if (v_areas[i] > t_area*1e-6):                      #### need to be changed according voxel resolution
+                            if (v_areas[i] > t_area*1e-6):                      
                                 t.voxel_ids.append(v_ids[i])
                                 t.s_voxel_ids.append(sv_ids[i])
                                 t.voxel_scalar_fracs.append(v_areas[i])
@@ -813,7 +820,7 @@ class Cell_Grid(Grid):
         for t in self.triangles:
             t.voxel_scalar_fracs = np.array(t.voxel_scalar_fracs)
             total_area = t.voxel_scalar_fracs.sum()
-            if (total_area < 1e-6*get_tri_area(t.vertices)):                       #### need to be changed according voxel resolution   
+            if (total_area < 1e-6*get_tri_area(t.vertices)):                         
                 low_area += 1
                 print('Uh oh, no voxel face area available for this triangle')
                 print(t.vertices)
