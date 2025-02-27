@@ -446,7 +446,7 @@ class MC_System:
             a,b,c = cg.get_indices(n)
             corner_volumes[c][b][a] = cg.corners[n].volume # marching cubes requires [z,y,x] order
 
-        verts, faces, normals, values = marching_cubes(volume= corner_volumes, level=None)
+        verts, faces, normals, values = marching_cubes(volume= corner_volumes, level=0.5)
         self.corner_volumes = corner_volumes
         self.verts = np.fliplr(verts) # marching_cubes() outputs in z,y,x order
         self.faces = faces
@@ -808,7 +808,7 @@ class Cell_Grid(Grid):
                             ind = t.voxel_ids.index(v_ids[i])
                             t.voxel_scalar_fracs[ind] += v_areas[i]
                         else:
-                            if (v_areas[i] > t_area*1e-3):                      
+                            if (v_areas[i] > t_area*1e-6):                      
                                 t.voxel_ids.append(v_ids[i])
                                 t.s_voxel_ids.append(sv_ids[i])
                                 t.voxel_scalar_fracs.append(v_areas[i])
@@ -820,7 +820,7 @@ class Cell_Grid(Grid):
         for t in self.triangles:
             t.voxel_scalar_fracs = np.array(t.voxel_scalar_fracs)
             total_area = t.voxel_scalar_fracs.sum()
-            if (total_area < 1e-3*get_tri_area(t.vertices)):                         
+            if (total_area < 1e-6*get_tri_area(t.vertices)):                         
                 low_area += 1
                 print('Uh oh, no voxel face area available for this triangle')
                 print(t.vertices)
