@@ -73,47 +73,55 @@ class Triangle:
         # if no axes are separable, there is overlap
         return True, proj_face
         
-    def get_intersection_area(self, proj_face):
-        clipped_points = clip_sh(proj_face, self) # find overlapping area
-        if len(clipped_points) < 3:
-            return 0
-        rotated_points = orient_polygon_xy(clipped_points, self.normal) # rotate overlap polygon into xy plane
-        return polygon_area(rotated_points) # get area with shoelace formula
+    def get_intersection_area(self, proj_faces):
+        all_clipped_points = clip_sh(proj_faces, self) # find overlapping area
+        polygon_areas = []
+        for clipped_points in all_clipped_points:
+            if len(clipped_points) < 3:
+                polygon_areas.append(0)
+                continue
+            rotated_points = orient_polygon_xy(clipped_points, self.normal) # rotate overlap polygon into xy plane
+            polygon_areas.append(polygon_area(rotated_points)) # get area with shoelace formula
+        return polygon_areas
 
 # Sutherland-Hodgman polygon clipping
 # inputs are vertices of subject (to be clipped) and vertices
 # of window (the clipper)
-def clip_sh(subject, clip_tri):
-    # clipping operation
-    in_pts = subject
-    for i in range(3):
-        out_pts = []
-        for j in range(len(in_pts)):
-            p1 = in_pts[j - 1]
-            p2 = in_pts[j]
-
-            # compute intersection with infinite edge
-            p1_in, p2_in, intersect = segment_plane_intersection(p1, p2, clip_tri.plane_normal[i], clip_tri.vertices[i], clip_tri.epsilon)
-
-            if (p2_in):
-                if (not p1_in):
-                    out_pts.append(intersect)
-                out_pts.append(p2)
-            elif (p1_in):   # and not p2_in
-                out_pts.append(intersect)
-            # if p1 and p2 both outside, do nothing, delete line segment
-
-        in_pts = out_pts
-
+def clip_sh(subjects, clip_tri):
     final_pts = []
-    for i in range(len(out_pts)):
-        dupe = False
-        for j in range(i + 1, len(out_pts)):
-            if (all(abs(out_pts[j] - out_pts[i]) < clip_tri.epsilon)):
-                dupe = True
-                break
-        if not dupe:
-            final_pts.append(out_pts[i])
+    for subject in subjects:
+        # clipping operation
+        in_pts = subject
+        for i in range(3):
+            out_pts = []
+
+            for j in range(len(in_pts)):
+                p1 = in_pts[j - 1]
+                p2 = in_pts[j]
+
+                # compute intersection with infinite edge
+                p1_in, p2_in, intersect = segment_plane_intersection(p1, p2, clip_tri.plane_normal[i], clip_tri.vertices[i], clip_tri.epsilon)
+
+                if (p2_in):
+                    if (not p1_in):
+                        out_pts.append(intersect)
+                    out_pts.append(p2)
+                elif (p1_in):   # and not p2_in
+                    out_pts.append(intersect)
+                # if p1 and p2 both outside, do nothing, delete line segment
+
+            in_pts = out_pts
+
+        # remove duplicate vertices
+        final_pts.append([])
+        for i in range(len(out_pts)):
+            dupe = False
+            for j in range(i + 1, len(out_pts)):
+                if (all(abs(out_pts[j] - out_pts[i]) < clip_tri.epsilon)):
+                    dupe = True
+                    break
+            if not dupe:
+                final_pts[-1].append(out_pts[i])
 
     return final_pts
 
@@ -132,7 +140,7 @@ def segment_plane_intersection(p1, p2, n, q, epsilon):
         p1_in = True
     if (p2_dist < epsilon):
         p2_in = True
-    # if one in and other out,
+    # if one in and other out, there is an intersection
     if (p1_in + p2_in == 1):
         if (p1_in):
             if (abs(p1_dist) < epsilon):
@@ -773,6 +781,7 @@ class Cell_Grid(Grid):
     
     # associate each triangle to voxels based on inward normal view of voxel faces
     def voxels_to_triangles(self):        
+        # intersection_counter = 0     
         # first assign voxels to each triangle in each cell
         for c in self.cells:
             if len(c.triangles):
@@ -790,17 +799,20 @@ class Cell_Grid(Grid):
                     sv_ids = []     # surface voxel ids
                     v_areas = []    # intersected area
                     t_area = get_tri_area(t.vertices)   # triangle area
+                    proj_fs = []    # projected faces
                     for vox in c_voxels:
                         for f in vox.faces:
                             if (f.exposed):
                                 if (np.dot(f.n, t.normal) > 0):
-                                    proj_f = np.array([f.xs[i] - t.normal*np.dot(t.normal, f.xs[i] - t.vertices[0]) for i in range(4)])
-                                    area = t.get_intersection_area(proj_f) # find area of overlap between projected face and triangle
+                                    # intersection_counter += 1
+                                    proj_fs.append(np.array([f.xs[i] - t.normal*np.dot(t.normal, f.xs[i] - t.vertices[0]) for i in range(4)]))
                                     vox.triangle_ids.append(t.id)
                                     vox.triangle_ids = list(set(vox.triangle_ids)) # prevent duplicates in list
                                     v_ids.append(vox.id)
                                     sv_ids.append(vox.surf_id)
-                                    v_areas.append(area)
+
+                    # find area of overlap between projected faces and triangle
+                    v_areas = t.get_intersection_area(proj_fs)
 
                     # collect voxel face areas together
                     for i in range(len(v_ids)):
