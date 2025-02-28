@@ -72,24 +72,29 @@ class Triangle:
 
         # if no axes are separable, there is overlap
         return True, proj_face
-        
-    def get_intersection_area(self, proj_faces):
-        all_clipped_points = clip_sh(proj_faces, self) # find overlapping area
-        polygon_areas = []
-        for clipped_points in all_clipped_points:
-            if len(clipped_points) < 3:
-                polygon_areas.append(0)
-                continue
-            rotated_points = orient_polygon_xy(clipped_points, self.normal) # rotate overlap polygon into xy plane
-            polygon_areas.append(polygon_area(rotated_points)) # get area with shoelace formula
-        return polygon_areas
+
+# get_intersection_area function for batch processing
+def get_intersection_area(proj_faces, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon):
+    # find overlapping area
+    all_clipped_points = clip_sh(proj_faces, tri_plane_normal, tri_vertices, tri_epsilon) 
+    polygon_areas = []
+    for intr_indx, clipped_points in enumerate(all_clipped_points):
+        if len(clipped_points) < 3:
+            polygon_areas.append(0)
+            continue
+        # rotate overlap polygon into xy plane
+        rotated_points = orient_polygon_xy(clipped_points, tri_normal[intr_indx]) 
+        # get area with shoelace formula
+        polygon_areas.append(polygon_area(rotated_points)) 
+        progress_bar(intr_indx, len(all_clipped_points), '    finding intersection areas')
+    return polygon_areas
 
 # Sutherland-Hodgman polygon clipping
 # inputs are vertices of subject (to be clipped) and vertices
 # of window (the clipper)
-def clip_sh(subjects, clip_tri):
+def clip_sh(subjects, tri_plane_normal, tri_vertices, tri_epsilon):
     final_pts = []
-    for subject in subjects:
+    for intr_indx, subject in enumerate(subjects):
         # clipping operation
         in_pts = subject
         for i in range(3):
@@ -100,7 +105,7 @@ def clip_sh(subjects, clip_tri):
                 p2 = in_pts[j]
 
                 # compute intersection with infinite edge
-                p1_in, p2_in, intersect = segment_plane_intersection(p1, p2, clip_tri.plane_normal[i], clip_tri.vertices[i], clip_tri.epsilon)
+                p1_in, p2_in, intersect = segment_plane_intersection(p1, p2, tri_plane_normal[intr_indx][i], tri_vertices[intr_indx][i], tri_epsilon[intr_indx])
 
                 if (p2_in):
                     if (not p1_in):
@@ -117,11 +122,13 @@ def clip_sh(subjects, clip_tri):
         for i in range(len(out_pts)):
             dupe = False
             for j in range(i + 1, len(out_pts)):
-                if (all(abs(out_pts[j] - out_pts[i]) < clip_tri.epsilon)):
+                if (all(abs(out_pts[j] - out_pts[i]) < tri_epsilon[intr_indx])):
                     dupe = True
                     break
             if not dupe:
                 final_pts[-1].append(out_pts[i])
+
+        progress_bar(intr_indx, len(subjects), '    clipping polygons')
 
     return final_pts
 
@@ -781,53 +788,64 @@ class Cell_Grid(Grid):
     
     # associate each triangle to voxels based on inward normal view of voxel faces
     def voxels_to_triangles(self):        
-        # intersection_counter = 0     
-        # first assign voxels to each triangle in each cell
+        proj_fs = []    # projected faces
+        tri_normal = []
+        tri_plane_normal = []
+        tri_vertices = []
+        tri_epsilon = []
+        c_voxels = []
+
+        print('    associating voxels...')
+        # First assign voxels to each triangle in each cell
         for c in self.cells:
             if len(c.triangles):
                 # collect all voxels in current and neighboring cells
                 ind = list(self.get_indices(c.id))
-                c_voxels = []
+                c_voxels.append([])
                 for ni in Cell_Grid.neighbor_increments:
                     n_ind = ind + ni
                     if (self.valid_element(n_ind)):
-                        c_voxels += self.cells[self.get_element(n_ind[0], n_ind[1], n_ind[2])].surface_voxels
+                        c_voxels[-1] += self.cells[self.get_element(n_ind[0], n_ind[1], n_ind[2])].surface_voxels
                 
-                # project eligible exposed voxel faces onto triangle plane and test for intersection
+                # project eligible exposed voxel faces onto triangle plane
                 for t in c.triangles:
-                    v_ids = []      # voxel ids 
-                    sv_ids = []     # surface voxel ids
-                    v_areas = []    # intersected area
-                    t_area = get_tri_area(t.vertices)   # triangle area
-                    proj_fs = []    # projected faces
-                    for vox in c_voxels:
+                    for vox in c_voxels[-1]:
                         for f in vox.faces:
-                            if (f.exposed):
-                                if (np.dot(f.n, t.normal) > 0):
-                                    # intersection_counter += 1
+                            if (f.exposed) and (np.dot(f.n, t.normal) > 0):
                                     proj_fs.append(np.array([f.xs[i] - t.normal*np.dot(t.normal, f.xs[i] - t.vertices[0]) for i in range(4)]))
-                                    vox.triangle_ids.append(t.id)
-                                    vox.triangle_ids = list(set(vox.triangle_ids)) # prevent duplicates in list
-                                    v_ids.append(vox.id)
-                                    sv_ids.append(vox.surf_id)
+                                    tri_normal.append(t.normal)
+                                    tri_plane_normal.append(t.plane_normal)
+                                    tri_vertices.append(t.vertices)
+                                    tri_epsilon.append(t.epsilon)
 
-                    # find area of overlap between projected faces and triangle
-                    v_areas = t.get_intersection_area(proj_fs)
+        # Find area of overlap between projected faces and triangles
+        v_areas = get_intersection_area(proj_fs, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon)
 
-                    # collect voxel face areas together
-                    for i in range(len(v_ids)):
-                        if (v_ids[i] in t.voxel_ids):
-                            ind = t.voxel_ids.index(v_ids[i])
-                            t.voxel_scalar_fracs[ind] += v_areas[i]
-                        else:
-                            if (v_areas[i] > t_area*1e-6):                      
-                                t.voxel_ids.append(v_ids[i])
-                                t.s_voxel_ids.append(sv_ids[i])
-                                t.voxel_scalar_fracs.append(v_areas[i])
+        # Collect voxel face areas together
+        area_idx = 0
+        c_idx = 0
+        for c in self.cells:
+            if len(c.triangles):
+                for t in c.triangles:
+                    t_area = get_tri_area(t.vertices)
+                    for vox in c_voxels[c_idx]:
+                        for f in vox.faces:
+                            if f.exposed and np.dot(f.n, t.normal) > 0:
+                                v_id = vox.id
+                                sv_id = vox.surf_id
+                                # Assign the computed area to the voxel-triangle pair
+                                if v_id in t.voxel_ids:
+                                    ind = t.voxel_ids.index(v_id)
+                                    t.voxel_scalar_fracs[ind] += v_areas[area_idx]
+                                else:
+                                    if v_areas[area_idx] > t_area * 1e-6:  # Ensure it's significant
+                                        t.voxel_ids.append(v_id)
+                                        t.s_voxel_ids.append(sv_id)
+                                        t.voxel_scalar_fracs.append(v_areas[area_idx])
+                                area_idx += 1  # Move to next computed area
+                c_idx += 1
 
-            progress_bar(c.id + 1, len(self.cells), 'associating voxels    ')
-
-        # now normalize scalar fractions by total voxel face area intercepted by the triangle
+        # Normalize scalar fractions by total voxel face area intercepted by the triangle
         low_area = 0
         for t in self.triangles:
             t.voxel_scalar_fracs = np.array(t.voxel_scalar_fracs)
