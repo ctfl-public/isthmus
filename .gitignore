@@ -10,3 +10,8 @@ env
 .venv
 docs
 .vscode
+
+tests/**
+!tests/test_*.py
+!tests/gpu_test_wrapper.py
+
