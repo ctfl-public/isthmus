@@ -1,10 +1,9 @@
-# %%
+import unittest
 import numpy as np
 import trimesh
 import sys
 import pandas as pd
 import os
-sys.path.insert(0, r'C:\Users\ethan\lab_codes\isthmus\src')
 from isthmus_prototype import *
 
 # read in output
@@ -411,7 +410,12 @@ def voxel_association_test():
         for fv in range(len(face_voxels[i])):
             cv = face_voxels[i][fv]
             if (abs(vox_vals[cv] - kvt*(vox_face_area/tri_area)) > epsilon):
-                print('face {}: {}, {}'.format(i + 1, vox_vals[cv], kvt*(vox_face_area/tri_area)))
+                print('Face {}: Computed area {}, True area {}, diff {} %'.format(
+                        i + 1, 
+                        vox_vals[cv], 
+                        kvt*(vox_face_area/tri_area), 
+                        (vox_vals[cv]-kvt*(vox_face_area/tri_area))/(kvt*(vox_face_area/tri_area))*100
+                        ))
                 return False
 
     return True
