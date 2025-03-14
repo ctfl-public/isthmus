@@ -1,16 +1,14 @@
 import unittest
 import numpy as np
-from numba import cuda
-from isthmus_prototype import polygon_area, orient_polygon_xy, segment_plane_intersection, clip_sh, get_intersection_area
-from isthmus_gpu import polygon_area_gpu, orient_polygon_xy_gpu, segment_plane_intersection_gpu, clip_sh_gpu, get_intersection_area_kernel
+try:
+    from numba import cuda
+    from isthmus_gpu import *
+    from gpu_test_wrappers import *
+    cuda_available = cuda.is_available()
+except ImportError:
+    cuda_available = False
+from isthmus_prototype import *
 
-@cuda.jit
-def polygon_area_gpu_kernel(verts, n_verts, area):
-    idx = cuda.grid(1)
-    stride = cuda.gridsize(1)
-
-    for i in range(idx, verts.shape[0], stride):
-        area[i] = polygon_area_gpu(verts[i], n_verts)
 
 class TestPolygonArea(unittest.TestCase):
     # Test a square with side length of 1 that should return an area of 1.
@@ -21,6 +19,9 @@ class TestPolygonArea(unittest.TestCase):
     
     # GPU Test of n squares with side length of 1 that should return area of 1.
     def test_polygon_area_gpu1(self):
+        if not cuda_available:
+            self.skipTest("Skipping GPU tests (Numba or CUDA not available)")
+
         n = int(1e6)
         verts = np.tile(np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32), (n, 1, 1))
         n_verts = 4
@@ -39,6 +40,9 @@ class TestPolygonArea(unittest.TestCase):
 
     # This test to make sure that summation in kernal is n_verts dependent and not on size of verts (since it could be pointer with different size).
     def test_polygon_area_gpu2(self):
+        if not cuda_available:
+            self.skipTest("Skipping GPU tests (Numba or CUDA not available)")
+
         n = int(1e6)
         verts = np.tile(np.array([[0, 1, 0], [0, 0, 0], [1, 0, 0], [0, 0, 0]], dtype=np.float32), (n, 1, 1))
         n_verts = 3
@@ -55,14 +59,6 @@ class TestPolygonArea(unittest.TestCase):
         computed_area = area_gpu.copy_to_host()
         np.testing.assert_almost_equal(computed_area, expected_area)
 
-@cuda.jit
-def orient_polygon_xy_gpu_kernel(verts, normals, rotated_out):
-    """CUDA kernel to apply orient_polygon_xy_gpu in parallel."""
-    idx = cuda.grid(1)
-    stride = cuda.gridsize(1)
-
-    for i in range(idx, verts.shape[0], stride):
-        orient_polygon_xy_gpu(verts[i], normals[i], rotated_out[i])
 
 class TestOrientPolygonXY(unittest.TestCase):
     # Test a rectangle lying in the YZ plane, expected to rotate into the XY plane.
@@ -80,6 +76,9 @@ class TestOrientPolygonXY(unittest.TestCase):
 
     # Parallel test for orient_polygon_xy_gpu.
     def test_orient_polygon_xy_gpu(self):
+        if not cuda_available:
+            self.skipTest("Skipping GPU tests (Numba or CUDA not available)")
+
         n = int(1e6)  # Test with 1,000,000 rectangles
         verts = np.tile(np.array([[0, 0, 0], [0, 2, 0], [0, 2, 4], [0, 0, 4]], dtype=np.float32), (n, 1, 1))
         normals = np.tile(np.array([1, 0, 0], dtype=np.float32), (n, 1))
@@ -105,20 +104,6 @@ class TestOrientPolygonXY(unittest.TestCase):
         np.testing.assert_almost_equal(computed_rotated, expected)
 
 
-@cuda.jit
-def segment_plane_intersection_gpu_kernel(p1, p2, n, q, epsilon, p1_in_out, p2_in_out, intersections_out):
-    """CUDA kernel for parallel execution of segment_plane_intersection_gpu."""
-    idx = cuda.grid(1)
-    stride = cuda.gridsize(1)
-
-    for i in range(idx, p1.shape[0], stride):
-        p1_in, p2_in, intersect = segment_plane_intersection_gpu(p1[i], p2[i], n[i], q[i], epsilon)
-        p1_in_out[i] = p1_in
-        p2_in_out[i] = p2_in
-        intersections_out[i, 0] = intersect[0]
-        intersections_out[i, 1] = intersect[1]
-        intersections_out[i, 2] = intersect[2]
-
 class TestSegmentPlaneIntersection(unittest.TestCase):
     # Test when a segment intersects the plane at (0,0,0).
     def test_segment_plane_intersection(self):
@@ -142,6 +127,9 @@ class TestSegmentPlaneIntersection(unittest.TestCase):
 
     # Parallel test when a batch of segments intersects the plane at (0,0,0).
     def test_segment_plane_intersection_gpu(self):
+        if not cuda_available:
+            self.skipTest("Skipping GPU tests (Numba or CUDA not available)")
+
         n = int(1e6)  # Test with 1,000,000 segments
         p1 = np.tile(np.array([[1, 1, 1]], dtype=np.float32), (n, 1))
         p2 = np.tile(np.array([[-1, -1, -1]], dtype=np.float32), (n, 1))
@@ -182,15 +170,6 @@ class TestSegmentPlaneIntersection(unittest.TestCase):
         np.testing.assert_almost_equal(computed_intersections, expected_intersections, decimal=5)
 
 
-@cuda.jit
-def clip_sh_gpu_kernel(subjects, tri_plane_normal, tri_vertices, tri_epsilon, clipped_pts_out, n_clipped_pts_out):
-    """CUDA kernel for parallel execution of clip_sh_gpu."""
-    idx = cuda.grid(1)
-    stride = cuda.gridsize(1)
-
-    for i in range(idx, subjects.shape[0], stride):
-        clip_sh_gpu(subjects[i], tri_plane_normal[i], tri_vertices[i], tri_epsilon, clipped_pts_out, n_clipped_pts_out, i)
-
 
 class TestClipSH(unittest.TestCase):
     # Test clipping a square against a plane
@@ -211,6 +190,9 @@ class TestClipSH(unittest.TestCase):
 
     # Test batch processing of clipping a square against planes
     def test_clip_sh_gpu(self):
+        if not cuda_available:
+            self.skipTest("Skipping GPU tests (Numba or CUDA not available)")
+
         n = int(1e6)  # Test with 1,000,000 polygons
 
         subjects = np.tile(np.array([[[0, 0, 0], [2, 0, 0], [2, 2, 0], [0, 2, 0]]], dtype=np.float32), (n, 1, 1))
@@ -266,6 +248,9 @@ class TestIntersectionArea(unittest.TestCase):
 
     # Test batch processing of intersection area computation
     def test_get_intersection_area_gpu(self):
+        if not cuda_available:
+            self.skipTest("Skipping GPU tests (Numba or CUDA not available)")
+            
         n = int(1e6)  # Test with 1,000,000 polygons
 
         proj_faces = np.tile(np.array([[[0, 0, 0], [2, 0, 0], [2, 2, 0], [0, 2, 0]]], dtype=np.float32), (n, 1, 1))
