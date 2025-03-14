@@ -6,6 +6,14 @@ import copy
 from Marching_Cubes import marching_cubes, mesh_surface_area
 from scipy.spatial import cKDTree
 
+# Check if Numba is available, use isthmus_gpu
+try:
+    import numba
+    from isthmus_gpu import get_intersection_area_gpu
+    numba_available = True
+except ImportError:
+    numba_available = False
+
 # need csv, dev, grids, voxel_data, and voxel_tri folders
 
 #%% Individual geometric elements used in grids
@@ -313,13 +321,17 @@ class MC_System:
         Name of output surface file.
     call_no:
         Call number to append with the output file that associate triangles to voxels. 
+    gpu: bool
+        If True, use GPU for calculations.
 
     """
-    def __init__(self, lims, ncells, voxel_size, voxels, name, call_no):
+    def __init__(self, lims, ncells, voxel_size, voxels, name, call_no, gpu=False):
         print('Executing marching cubes...')
         
         lims = lims/voxel_size
         voxels = voxels/voxel_size                                ####### scaling of voxels and bounding box with respect to the lowest value for making marching windows independent of precision error
+
+        self.gpu = gpu and numba_available  # Use GPU only if Numba is available
 
         Surface_Voxel.n_svoxels = 0
         self.verts = []
@@ -346,7 +358,7 @@ class MC_System:
         
         # find voxels on the surface and organize these surface voxels and triangles into cells
         self.surface_voxels = self.sort_voxels()
-        self.cell_grid = Cell_Grid(lims, ncells, self.surface_voxels, self.faces, self.verts)
+        self.cell_grid = Cell_Grid(lims, ncells, self.surface_voxels, self.faces, self.verts, self.gpu)
         
         # associate voxels to triangles
         self.write_triangle_voxels(call_no)
@@ -749,9 +761,10 @@ class Cell_Grid(Grid):
                 neighbor_increments = np.append(neighbor_increments, [x,y,z])
     neighbor_increments = np.reshape(neighbor_increments, (27, 3)).astype(int)
     
-    def __init__(self, lims, dims, surface_voxels, faces, verts):
+    def __init__(self, lims, dims, surface_voxels, faces, verts, gpu=False):
         print('Associating voxels to surface triangles...')
         super().__init__(lims, dims)
+        self.gpu = gpu
         self.cell_length = (self.lims[1] - self.lims[0])/self.dims # length of cell in [x,y,z] directions
         self.cells = np.array([MC_Cell(i) for i in range(np.prod(dims))])
         for i in range(3): # center of cell
@@ -819,7 +832,12 @@ class Cell_Grid(Grid):
                                     tri_epsilon.append(t.epsilon)
 
         # Find area of overlap between projected faces and triangles
-        v_areas = get_intersection_area(proj_fs, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon)
+        # Use GPU or CPU version based on the flag
+        if self.gpu:
+            print("        Running get_intersection_area on GPU...")
+            v_areas = get_intersection_area_gpu(proj_fs, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon)
+        else:
+            v_areas = get_intersection_area(proj_fs, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon)
 
         # Collect voxel face areas together
         area_idx = 0
