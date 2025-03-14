@@ -608,7 +608,10 @@ class MC_System:
         self.verts = self.verts/voxel_size 
         
     def write_triangle_voxels(self,call_no):
-        f = open('voxel_tri/triangle_voxels_'+str(call_no)+'.dat', 'w')
+        directory = 'voxel_tri'
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        f = open(os.path.join(directory, 'triangle_voxels_'+str(call_no)+'.dat'), 'w')
         f.write('{nt} total triangles\n\n'.format(nt = len(self.cell_grid.triangles)))
         for t in self.cell_grid.triangles:
             f.write('start id {ti}\n'.format(ti=t.id + 1))
