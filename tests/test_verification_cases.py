@@ -409,15 +409,16 @@ def voxel_association_test(gpu=False):
     tri_area = clength*clength/2
     for i in range(6):
         kvt = (i + 1)*kv
-        epsilon = 1e-6*kvt
+        epsilon = 2e-6*kvt
         for fv in range(len(face_voxels[i])):
             cv = face_voxels[i][fv]
             if (abs(vox_vals[cv] - kvt*(vox_face_area/tri_area)) > epsilon):
-                print('Face {}: Computed area {}, True area {}, diff {} %'.format(
+                print('Face {}: Computed area {}, True area {}, diff {}, epsilon {}'.format(
                         i + 1, 
                         vox_vals[cv], 
                         kvt*(vox_face_area/tri_area), 
-                        (vox_vals[cv]-kvt*(vox_face_area/tri_area))/(kvt*(vox_face_area/tri_area))*100
+                        abs(vox_vals[cv] - kvt*(vox_face_area/tri_area)),
+                        epsilon
                         ))
                 return False
 

@@ -12,7 +12,7 @@ def get_intersection_area_gpu(proj_faces, tri_normal, tri_plane_normal, tri_vert
     threads_per_block = 256  # Tuned for GPU efficiency
     blocks_per_grid = min((len(proj_faces) + threads_per_block - 1) // threads_per_block, 1024)
 
-    clipped_pts = cuda.device_array((len(proj_faces), 4, 3), dtype=np.float32)  # clipped polygon vertices, max 4 vertices
+    clipped_pts = cuda.device_array((len(proj_faces), 7, 3), dtype=np.float32)  # clipped polygon vertices, max 6 vertices
     n_clipped_pts = cuda.device_array((len(proj_faces)), dtype=np.int32) # number of vertices for each clipped polygon
     areas_gpu = cuda.device_array(len(proj_faces), dtype=np.float32)
 
@@ -34,9 +34,9 @@ def get_intersection_area_kernel(proj_faces, tri_normal, tri_plane_normal, tri_v
         has_points = n_clipped_pts[idx] > 2
         if not has_points:
             areas[idx] = 0
-            return
+            continue
 
-        rotated_points = cuda.local.array((4, 2), dtype=float32)
+        rotated_points = cuda.local.array((7, 2), dtype=float32)
         orient_polygon_xy_gpu(clipped_pts[idx], tri_normal[idx], rotated_points)
 
         areas[idx] = polygon_area_gpu(rotated_points, n_clipped_pts[idx])
@@ -48,8 +48,8 @@ def clip_sh_gpu(subject, tri_plane_normal, tri_vertices, tri_epsilon, clipped_pt
     clip_verts = tri_vertices
     epsilon = tri_epsilon
 
-    in_pts = cuda.local.array((4, 3), dtype=float32)
-    out_pts = cuda.local.array((4, 3), dtype=float32)
+    in_pts = cuda.local.array((7, 3), dtype=float32)
+    out_pts = cuda.local.array((7, 3), dtype=float32)
 
     # Copy subject to in_pts
     for k in range(4): # each point of voxel face
@@ -60,7 +60,7 @@ def clip_sh_gpu(subject, tri_plane_normal, tri_vertices, tri_epsilon, clipped_pt
     for i in range(3): # each clip plane
         num_out_pts = 0
         for j in range(n_edges): # each edge of voxel face
-            p1 = in_pts[j - 1] if j > 0 else in_pts[n_edges - 1]
+            p1 = in_pts[(j-1)%n_edges]
             p2 = in_pts[j]
 
             p1_in, p2_in, intersect = segment_plane_intersection_gpu(
@@ -79,7 +79,8 @@ def clip_sh_gpu(subject, tri_plane_normal, tri_vertices, tri_epsilon, clipped_pt
                 for j in range(3):
                     out_pts[num_out_pts, j] = intersect[j]
                 num_out_pts += 1
-
+        if num_out_pts > 7:
+            print("Warning:: In clip_sh_gpu, num_out_pts > 7: ", num_out_pts)
         n_edges = num_out_pts
 
         for k in range(num_out_pts):
