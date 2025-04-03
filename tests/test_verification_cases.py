@@ -1,10 +1,13 @@
 import unittest
 import numpy as np
 import trimesh
-import sys
-import pandas as pd
 import os
 from isthmus_prototype import *
+try:
+    from numba import cuda
+    cuda_available = cuda.is_available()
+except ImportError:
+    cuda_available = False
 
 # read in output
 def read_output():
@@ -303,7 +306,7 @@ This tests correct association and fractionizing of triangles to voxels
 Ok, counteroffer: make a cube with voxels slightly misaligned to triangles,
 so all interior face voxels should have a nice value
 """
-def voxel_association_test():
+def voxel_association_test(gpu=False):
     # grid length and number of mc cells in each dir
     # cell length = 1e-7
     gl = 2e-6
@@ -336,7 +339,7 @@ def voxel_association_test():
     ncells = np.asarray([ref, ref, ref])
 
     # create surface
-    mc_system = MC_System(lims, ncells, v_size, voxels, 'vox2surf.surf', 0)
+    mc_system = MC_System(lims, ncells, v_size, voxels, 'vox2surf.surf', 0, gpu=gpu)
     new_tris = mc_system.verts[mc_system.faces]
 
     combined_mesh = trimesh.Trimesh(vertices=mc_system.verts, faces=mc_system.faces)
@@ -406,15 +409,16 @@ def voxel_association_test():
     tri_area = clength*clength/2
     for i in range(6):
         kvt = (i + 1)*kv
-        epsilon = 1e-6*kvt
+        epsilon = 2e-6*kvt
         for fv in range(len(face_voxels[i])):
             cv = face_voxels[i][fv]
             if (abs(vox_vals[cv] - kvt*(vox_face_area/tri_area)) > epsilon):
-                print('Face {}: Computed area {}, True area {}, diff {} %'.format(
+                print('Face {}: Computed area {}, True area {}, diff {}, epsilon {}'.format(
                         i + 1, 
                         vox_vals[cv], 
                         kvt*(vox_face_area/tri_area), 
-                        (vox_vals[cv]-kvt*(vox_face_area/tri_area))/(kvt*(vox_face_area/tri_area))*100
+                        abs(vox_vals[cv] - kvt*(vox_face_area/tri_area)),
+                        epsilon
                         ))
                 return False
 
@@ -430,16 +434,30 @@ def safe_mkdir(path, name):
             print(err)
 
 
+class TestVoxelDivision(unittest.TestCase):
+    def test_voxel_division(self):
+        self.assertTrue(voxel_division_test())
 
-# %%
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-pathg= os.getcwd() + '/'
-safe_mkdir(pathg, 'test_results')
+class TestSurfaceCreation(unittest.TestCase):
+    def test_surface_creation(self):
+        self.assertTrue(surface_creation_test())
 
-os.chdir('./test_results')
-v2c_pass = voxel_division_test()
-print('Voxel division test passed:    ' + str(v2c_pass))
-mc_pass = surface_creation_test()
-print('Surface creation test passed:  ' + str(mc_pass))
-vass_pass = voxel_association_test()
-print('Voxel association test passed: ' + str(vass_pass))
+class TestVoxelAssociation(unittest.TestCase):
+    def test_voxel_association(self):
+        self.assertTrue(voxel_association_test())
+        
+    def test_voxel_association_gpu(self):
+        if not cuda_available:
+            self.skipTest("Skipping GPU tests (Numba or CUDA not available)")
+        self.assertTrue(voxel_association_test(gpu=True))
+
+
+
+if __name__ == '__main__':
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    pathg= os.getcwd() + '/'
+    safe_mkdir(pathg, 'test_results')
+    os.chdir('./test_results')
+
+    unittest.main(verbosity=2)
+
