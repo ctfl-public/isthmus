@@ -1,3 +1,4 @@
+# %%
 """
 Error Prediction Calculations for Isthmus
 Ethan Huff (ya boi)
@@ -28,99 +29,7 @@ plt.legend()
 plt.xlim(3, 20)
 plt.ylim(0, 1.2)
 
-
-def get_area(points):
-    max_y_mag = max(abs(np.transpose(points)[1]))
-    area = 0
-    apts = np.array([[pt[0], pt[1] + 1.2*max_y_mag] for pt in points])
-    for i in range(len(apts)):
-        pt1 = apts[i - 1]
-        pt2 = apts[i]
-        area += (pt2[1] + pt1[1])*(pt2[0] - pt1[0])
-    area *= 0.5
-    return abs(area)
-
-# %% approximate polygons using curves at corners
-class Arc:
-    def __init__(self, center, radius, ext_angles=[]):
-        self.center = np.array(center)
-        self.radius = radius
-
-        self.full = False
-        self.ext_angles = np.array([0, 2*np.pi])
-        if len(ext_angles) == 0:
-            self.full = True
-        else:
-            self.ext_angles[0] = ext_angles[0]
-            self.ext_angles[1] = ext_angles[1]
-
-        # [x,y] pairs to have a numerical approximation of the arc
-        self.num_pts = []
-        nsides = 300
-        if (self.ext_angles[1] - self.ext_angles[0]) > 0:
-            dt = (self.ext_angles[1] - self.ext_angles[0])/nsides
-        else:
-            dt = (self.ext_angles[1] - self.ext_angles[0] + 2*np.pi)/nsides
-        for i in range(nsides + 1):
-            x = self.radius*np.cos(self.ext_angles[0] + i*dt) + self.center[0]
-            y = self.radius*np.sin(self.ext_angles[0] + i*dt) + self.center[1]
-            self.num_pts.append([x,y])
-        self.num_pts = np.array(self.num_pts)
-        transend = np.transpose(self.num_pts)
-        self.xlo = np.array([min(transend[0]), min(transend[1])])
-        self.xhi = np.array([max(transend[0]), max(transend[1])])
-
-    def get_ends(self):
-        a = np.array([self.radius*np.cos(self.ext_angles[0]) + self.center[0],
-                      self.radius*np.sin(self.ext_angles[0]) + self.center[1]])
-        b = np.array([self.radius*np.cos(self.ext_angles[1]) + self.center[0],
-                      self.radius*np.sin(self.ext_angles[1]) + self.center[1]])
-        return np.array([a,b])
-
-    
-    def plot(self, clr):
-        coords = np.transpose(self.num_pts)
-        plt.plot(coords[0], coords[1], color=clr)
-
-    def get_x_from_y(self, y):
-        diff = np.sqrt(self.radius**2 - (y - self.center[1])**2)
-        if abs(diff) < 1e-5:
-            xs = [self.center[0]]
-        else:
-            xs = [self.center[0] - diff, self.center[0] + diff]
-        fxs = []
-        for x in xs:
-            theta = np.arctan2(y - self.center[1], x - self.center[0])
-            if theta < 0:
-                theta += 2*np.pi
-            if self.ext_angles[1] > self.ext_angles[0]:
-                if theta >= self.ext_angles[0] and theta <= self.ext_angles[1]:
-                    fxs.append(x)
-            else:
-                if (self.ext_angles[0] < theta and theta <= 2*np.pi + 1e-12) or \
-                    -1e-12 < theta and theta < self.ext_angles[1]:
-                    fxs.append(x)
-        return fxs
-        
-    def get_y_from_x(self, x):
-        diff = np.sqrt(self.radius**2 - (x - self.center[0])**2)
-        if abs(diff) < 1e-5:
-            ys =  [self.center[1]]
-        else:
-            ys =  [self.center[1] - diff, self.center[1] + diff]
-        fys = []
-        for y in ys:
-            theta = np.arctan2(y - self.center[1], x - self.center[0])
-            if theta < 0:
-                theta += 2*np.pi
-            if self.ext_angles[1] > self.ext_angles[0]:
-                if theta >= self.ext_angles[0] and theta <= self.ext_angles[1]:
-                    fys.append(y)
-            else:
-                if (self.ext_angles[0] < theta and theta <= 2*np.pi + 1e-12) or \
-                    -1e-12 < theta and theta < self.ext_angles[1]:
-                    fys.append(y)
-        return fys
+# %%
             
 class Line:
     def __init__(self, endpts, locs=[]):
@@ -175,43 +84,51 @@ class Line:
             return (y - self.bi)/self.m
 
 class Polygon:
-    def __init__(self, sides):
-        self.sides = np.array([Line([sides[i - 1], sides[i]]) for i in range(len(sides))])
-        self.nsides = len(sides)
-        transsides = np.transpose(sides)
-        self.xlo = np.array([min(transsides[0]), min(transsides[1])])
-        self.xhi = np.array([max(transsides[0]), max(transsides[1])])
+    def __init__(self, vertices, lines):
+        self.sides = lines
+        self.nsides = len(self.sides)
 
-    def check_point_inside(self, pt):
-        for s in self.sides:
-            poly_line = np.append(s.b - s.a, [0])
-            point_line = np.append(pt - s.a, [0])
-            zcomp = np.cross(poly_line, point_line)[2]
-            if (zcomp < -1e-12):
-                return False
-        return True
+        self.empty_flag = 1
+        if len(vertices):
+            self.empty_flag = 0
+            transverts = np.transpose(vertices)
+            self.xlo = np.array([min(transverts[0]), min(transverts[1])])
+            self.xhi = np.array([max(transverts[0]), max(transverts[1])])
 
+    @classmethod
+    def point_polygon(cls, vertices):
+        sides = np.array([Line([vertices[i - 1], vertices[i]]) for i in range(len(vertices))])
+        return cls(vertices, sides)
 
-# ordered list of oriented line segments
-class RegularPolygon:
-    def __init__(self, radius, nsides):
-        self.sides = []
-        self.nsides = nsides
-        self.radius = radius # circumcircle
-        self.bbox = np.array([[-radius, -radius], [radius, radius]])
+    @classmethod
+    def line_polygon(cls, lines):
+        vertices = []
+        for sd in lines:
+            vertices.append(sd.a)
+            vertices.append(sd.b)
+        return cls(vertices, lines)
 
-        dtheta = 2*np.pi/self.nsides
-        r = self.radius
-        for i in range(self.nsides):
+    @classmethod
+    def regular_polygon(cls, radius, nsides):
+        vertices = []
+        dtheta = 2*np.pi/nsides
+        for i in range(nsides):
             # angles of corners on this line segment
-            th1 = np.pi/2 + dtheta*i
-            th2 = th1 + dtheta
-            # [[x1, y1], [x2, y2]]
-            self.sides.append(Line([[r*np.cos(th1), r*np.sin(th1)], [r*np.cos(th2), r*np.sin(th2)]]))
+            theta = np.pi/2 + dtheta*i
+            vertices.append([radius*np.cos(theta), radius*np.sin(theta)])
+        return cls.point_polygon(vertices)
 
-    def plot(self, color):
-        for s in self.sides:
-            s.plot(color)
+    # # shoelace formula for 2D area of polygon
+    # def get_polygon_area(self):
+    #     max_y_mag = max(abs(np.transpose(self.vertices)[1]))
+    #     area = 0
+    #     apts = np.array([[pt[0], pt[1] + 1.2*max_y_mag] for pt in self.vertices])
+    #     for i in range(len(apts)):
+    #         pt1 = apts[i - 1]
+    #         pt2 = apts[i]
+    #         area += (pt2[1] + pt1[1])*(pt2[0] - pt1[0])
+    #     area *= 0.5
+    #     return abs(area)
 
     def check_point_inside(self, pt):
         for s in self.sides:
@@ -219,61 +136,13 @@ class RegularPolygon:
             point_line = np.append(pt - s.a, [0])
             zcomp = np.cross(poly_line, point_line)[2]
             if (zcomp < -1e-12):
-                return False
-        return True
-
-    def make_polycurve(self, curve_ratio):
-        curve_sides = []
-        curve_rad = self.radius*curve_ratio
-        for i in range(len(self.sides)):
-            s1 = self.sides[i - 1]
-            s2 = self.sides[i]
-            # angle ABC is phi
-            A = s1.a
-            B = s1.b
-            C = s2.b
-            phi = np.arccos(np.dot(A - B, C - B)/(np.linalg.norm(A - B)*np.linalg.norm(C - B)))
-
-            # corner of current side
-            # get curvature center from corner
-            theta = np.arctan2(B[1], B[0])
-            r = np.linalg.norm(B)
-            lr = curve_rad/np.tan(phi/2)
-            curve_center = (r - (np.sqrt(lr**2 + curve_rad**2)))*np.array([np.cos(theta), np.sin(theta)])
-
-            # the curved sector has an angle of (pi - phi) centered at theta
-            angle1 = theta - (np.pi - phi)/2
-            if (angle1 < 0):
-                angle1 += 2*np.pi
-            angle2 = theta + (np.pi - phi)/2
-            if (angle2 < 0):
-                angle2 += 2*np.pi
-            curve_sides.append(Arc(curve_center, curve_rad, [angle1, angle2]))
-
-            # remove length lr from s2 on each side to make room for arc
-            midpt = (B + C)/2 # [xc, yc]
-            dx = C - midpt # [dx, dy]
-            lm = np.linalg.norm(dx)
-            ndx = ((lm - lr)/lm) * dx
-            curve_sides.append(Line([midpt - ndx, midpt + ndx]))
-
-
-        polycurve = Polycurve(curve_sides, self)
-        return polycurve
-
-class Polycurve:
-    def __init__(self, sides, source):
-        # ordered list of arcs and lines
-        self.sides = sides
-        self.polygon = source # original polygon
-        self.min_curve_rad = 1e6
-        for s in self.sides:
-            if (s.radius < self.min_curve_rad):
-                self.min_curve_rad = s.radius
-
+                return 0
+        return 1
+    
     def plot(self, color):
         for s in self.sides:
             s.plot(color)
+
 
 class Voxel:
     def __init__(self, x, v_size):
@@ -289,37 +158,152 @@ class Voxel:
     def plot(self, cl):
         xc = self.x[0]
         yc = self.x[1]
-        hv = self.size/2
+        hv = self.size/2*0.95
         xs = [xc - hv, xc + hv, xc + hv, xc - hv, xc - hv]
         ys = [yc - hv, yc - hv, yc + hv, yc + hv, yc - hv]
         plt.plot(xs, ys, color=cl)
 
 class Cell:
-    def __init__(self, xlo, xhi, corners):
-        # coordinates
-        self.xlo = np.array(xlo)
-        self.xhi = np.array(xhi)
-        self.center = (self.xlo + self.xhi)/2
-        self.borders = []
+    corner_grid = []
+    leaf_cell_lens = []
+    full_polygon = None
+    grid = None
+    def __init__(self, ixlo, ixhi, parent):
+        self.ixlo = np.array(ixlo) # [i,j] indices for [x,y] of minimum corner
+        self.ixhi = np.array(ixhi) # same for max corner
+        self.ncells = self.ixhi - self.ixlo  # [nx, ny] for cells in each direction
+        self.cell_len = self.ncells*Cell.leaf_cell_lens # length of cell sides
+        self.child_cells = []
+        self.parent = parent
 
-        # length of square cell
-        self.cell_len = (xhi - xlo)[0]
+        # bounding box of corner objects, [bottom left, bottom right, top right, top left]
+        i_min = self.ixlo[0]
+        j_min = self.ixlo[1]
+        i_max = self.ixhi[0]
+        j_max = self.ixhi[1]
+        self.corners = np.array([Cell.corner_grid[j_min][i_min], Cell.corner_grid[j_min][i_max],
+                                 Cell.corner_grid[j_max][i_max], Cell.corner_grid[j_max][i_min]])
+        self.xlo = self.corners[0].x
+        self.xhi = self.corners[2].x
+        self.center = (self.xhi + self.xlo)/2
+        
+        # 1 in , 0 out, -1 mixed
+        self.in_flag = -1
+        # marching squares topology index
+        self.type = -1
 
-        # list of corner objects associated
-        # [bottom left, bottom right, top right, top left]
-        self.corners = np.array(corners)
-        assert len(corners) == 4, 'ERROR: invalid number of corners ({}) provided to cell'.format(len(corners))
+        # empty except for leaf cells
+        self.borders = [] # edges, used for marching squares interpolation
+        self.voxels = []  # list of voxel objects owned by cell
 
-        self.type = 0 # 1 in, 0 out, -1 mixed
-        self.voxels = [] # list of voxel objects
+        if all(self.ncells == 1):
+            Cell.grid.cell_grid[ixlo[1]][ixlo[0]] = self
+        elif any(self.ncells < 1):
+            print('ERROR: fatal error in cell creation')
+            exit(1)
+        else:
+            # split the longer dimension in roughly half
+            a_dim = 0 if self.ncells[0] > self.ncells[1] else 1 # x (or y)
+            b_dim = 1 if a_dim == 0 else 0            # y (or x)
+            delta1 = int(self.ncells[a_dim]/2)    # lower half
+            delta2 = self.ncells[a_dim] - delta1  # upper half
+
+            # create lower half cell
+            diff = np.zeros(2).astype(int)
+            diff[a_dim] = delta1
+            diff[b_dim] = self.ncells[b_dim]
+            self.child_cells.append(Cell(ixlo, ixlo + diff, self))
+
+            # create upper half cell
+            diff[a_dim] = delta2
+            self.child_cells.append(Cell(ixhi - diff, ixhi, self))
+
+    @classmethod
+    def root_cell(cls, ixlo, grid):
+        # reset static variables and reinitialize
+        cls.grid = grid
+        cls.corner_grid = grid.corners # save the corner objects of entire grid
+        cls.leaf_cell_lens = (grid.corners[1][1].x - grid.corners[0][0].x)
+        cls.full_polygon = None
+        return cls(ixlo, grid.ncells, None)
+
+    @classmethod
+    def root_sort_inout(cls, root, polygon):
+        cls.full_polygon = polygon
+        root.sort_inout(polygon)
+
+    def clip_polyline(self, polyline):
+        new_lines = []
+        ext_xlo = self.xlo - 1e-15
+        ext_xhi = self.xhi + 1e-15
+        # check existence of polyline and overall bounding box first
+        if not(polyline.empty_flag) and all(polyline.xlo < ext_xhi) and all(polyline.xhi > ext_xlo):
+            # line by line
+            for sd in polyline.sides:
+                # check line bounding box
+                if all(sd.xlo < ext_xhi) and all(sd.xhi > ext_xlo):
+                    og_line = [sd.a, sd.b]
+                    extrema = [min, max]
+                    clipped_line = []
+                    for i in range(2):
+                        if all(og_line[i] > ext_xlo) and all(og_line[i] < ext_xhi):
+                            clipped_line.append(og_line[i])
+                        else:
+                            # check for first intersection on 'i' side
+                            intersects = []
+                            t_vals = []
+                            dx = [sd.b[0] - sd.a[0], sd.b[1] - sd.a[1]]
+                            interim = np.ones(2)
+                            for j in range(2):
+                                k = (j + 1) % 2
+                                if (abs(dx[j]) > 1e-30):
+                                    for xlim in [self.xlo, self.xhi]:
+                                        t = (xlim[j] - sd.a[j])/dx[j]
+                                        y_int = t*dx[k] + sd.a[k]
+                                        if t > 0 and t < 1 and y_int > ext_xlo[k] and y_int < ext_xhi[k]:
+                                            t_vals.append(t)
+                                            interim[j] = xlim[j]
+                                            interim[k] = y_int
+                                            intersects.append(interim)
+                                
+                            # select best intersect if any valid
+                            if len(intersects):
+                                ind = t_vals.index(extrema[i](t_vals))
+                                clipped_line.append(intersects[ind])
+
+                    if len(clipped_line) == 2:
+                        new_lines.append(Line(clipped_line))
+                    # elif len(clipped_line) == 1:
+                    #     print('ERROR: failure to clip line to cell')
+                    #     exit(1)
+
+        return Polygon.line_polygon(new_lines)
+
+    def sort_inout(self, polyline, inherit=-1):
+        new_polyline = polyline
+        if inherit == -1:
+            # create new polyline with just relevant sections
+            new_polyline = self.clip_polyline(polyline)
+
+            # if no polyline -> use full poly to check CENTER point
+            if len(new_polyline.sides) < 1:
+                self.in_flag = Cell.full_polygon.check_point_inside(self.center)
+        else:
+            self.in_flag = inherit
+
+        for c in self.child_cells:
+            c.sort_inout(new_polyline, inherit=self.in_flag)
 
     def add_voxel(self, vox):
         self.voxels.append(vox)
 
-    def plot(self, clr):
-        xs = [self.xlo[0], self.xhi[0], self.xhi[0], self.xlo[0], self.xlo[0]]
-        ys = [self.xlo[1], self.xlo[1], self.xhi[1], self.xhi[1], self.xlo[1]]
-        plt.plot(xs, ys, color=clr)
+    def plot(self):
+        xlo = self.corners[0].x + 0.05*Cell.leaf_cell_lens
+        xhi = self.corners[2].x - 0.05*Cell.leaf_cell_lens
+        xs = [xlo[0], xhi[0], xhi[0], xlo[0], xlo[0]]
+        ys = [xlo[1], xlo[1], xhi[1], xhi[1], xlo[1]]
+        ltj = ['red', 'blue', 'green']
+        plt.plot(xs, ys, color=ltj[self.in_flag])
 
     def set_topology(self):
         self.type = self.corners[3].inside*8 + \
@@ -438,18 +422,16 @@ class Cell:
 class Corner:
     def __init__(self, x):
         self.x = x
-        self.inside = 0 # 1 if inside, 0 if outside
+        self.inside = -1 # 1 if inside, 0 if outside, -1 if unassigned
         self.frac = 0
 
 class Grid:
-    def __init__(self, origin, ncells, cell_len, scale_flag=False):
+    def __init__(self, polygon, origin, ncells, cell_len, scale_flag=False):
         self.scale_flag = scale_flag
         self.xlo = origin
         self.xhi = origin + ncells*cell_len
         self.ncells = ncells
         self.cell_len = cell_len
-        self.mc_surf = [] # list of lines
-        self.cells = []
 
         # possible x and y coordinates of corners in grid
         self.ylines = []
@@ -468,22 +450,16 @@ class Grid:
                 corner_line.append(Corner(cx))
             self.corners.append(corner_line)
 
-        # create cells of grid
-        for j in range(ncells[1]):
-            cell_line = []
-            for i in range(ncells[0]):
-                cxlo = self.xlo + self.cell_len*np.array([i,j])
-                cxhi = cxlo + np.ones(2)*self.cell_len
-                cell_line.append(Cell(cxlo, cxhi, [self.corners[j][i], 
-                                                   self.corners[j][i + 1], 
-                                                   self.corners[j + 1][i + 1], 
-                                                   self.corners[j + 1][i]]))
-            self.cells.append(cell_line)
+        # recursively create grid cells and reference in grid format
+        self.cell_grid = np.zeros((ncells[1], ncells[0])).astype(int).tolist()
+        self.root_cell = Cell.root_cell([0, 0], self)
 
+        # sort cells by polygon
+        Cell.root_sort_inout(self.root_cell, polygon)
 
-    def sort(self, polycurve):
+    def sort(self, polygon):
         final_coords = []
-        for s in polycurve.sides:
+        for s in polygon.sides:
             if type(s) == Line:
                 x_intersect_pts = []
                 for xl in self.xlines:
@@ -499,53 +475,25 @@ class Grid:
                             y_intersect_pts.append([c_x, yl])
                 final_coords += x_intersect_pts
                 final_coords += y_intersect_pts
-            elif type(s) == Arc:
-                x_intersect_pts = []
-                for xl in self.xlines:
-                    if xl >= s.xlo[0] and xl <= s.xhi[0]:
-                        c_ys = s.get_y_from_x(xl)
-                        if c_ys != None:
-                            for i in range(len(c_ys)):
-                                x_intersect_pts.append([xl, c_ys[i]])
-                y_intersect_pts = []
-                for yl in self.ylines:
-                    if yl >= s.xlo[1] and yl <= s.xhi[1]:
-                        c_xs = s.get_x_from_y(yl)
-                        if c_xs != None:
-                            for i in range(len(c_xs)):
-                                y_intersect_pts.append([c_xs[i], yl])
-                final_coords += x_intersect_pts
-                final_coords += y_intersect_pts
         final_coords = np.array(final_coords)
         return final_coords
 
     def create_voxels(self, polygon, voxel_ratio):
         voxel_ratio = int(voxel_ratio)
-        voxel_size = self.cells[0][0].cell_len/voxel_ratio
-        ny = len(self.cells)
-        nx = len(self.cells[0])
+        voxel_size = Cell.leaf_cell_lens[0]/voxel_ratio
+        ny = self.root_cell.ncells[1]
+        nx = self.root_cell.ncells[0]
         vg = [[Voxel([self.xlo[0] + (i + 0.5)*voxel_size, self.xlo[1] + (j + 0.5)*voxel_size], voxel_size)
                for i in range(nx*voxel_ratio)] for j in range(ny*voxel_ratio)]
         self.vox_grid = np.array(vg)
-        for j in range(len(self.cells)):
-            for i in range(len(self.cells[j])):
-                c_cell = self.cells[j][i]
-                corner_inside = []
-                inside_flag = 0 # 0 edge, 1 inside, -1 outside
-                # check if cell is inside (assumes convex polygon)
-                for cn in c_cell.corners:
-                    cn_flag = polygon.check_point_inside(cn.x)
-                    corner_inside.append(cn_flag)
-                corner_inside = np.array(corner_inside)
-                if all(corner_inside == True):
-                    inside_flag = 1
-                elif all(corner_inside == False):
-                    inside_flag = -1
+        for j in range(len(self.cell_grid)):
+            for i in range(len(self.cell_grid[j])):
+                c_cell = self.cell_grid[j][i]
                 for n in range(voxel_ratio):
                     for m in range(voxel_ratio):
-                        if inside_flag == 1:
+                        if c_cell.in_flag == 1:
                             vox_flag = True
-                        elif inside_flag == -1:
+                        elif c_cell.in_flag == 0:
                             vox_flag = False
                         else:
                             diff = np.array([m, n])
@@ -557,7 +505,7 @@ class Grid:
                         c_vox = self.vox_grid[vy][vx]
                         if vox_flag:
                             c_vox.binary_fill()
-                        if j == 0 or i == 0 or j == len(self.vox_grid) - 1 or i == len(self.vox_grid[0]) - 1:
+                        if j == 0 or i == 0 or j == len(self.cell_grid) - 1 or i == len(self.cell_grid[0]) - 1:
                             c_vox.weight = 0
                             c_vox.type = int(-1e5)
                         c_cell.add_voxel(c_vox)
@@ -616,9 +564,9 @@ class Grid:
 
 
         # fill corners of cells with voxel mass
-        for j in range(len(self.cells)):
-            for i in range(len(self.cells[j])):
-                c_cell = self.cells[j][i]
+        for j in range(len(self.cell_grid)):
+            for i in range(len(self.cell_grid[j])):
+                c_cell = self.cell_grid[j][i]
                 for vox in c_cell.voxels:
                     if vox.weight > 1e-12:
                         # split area between corners
@@ -648,79 +596,30 @@ class Grid:
                     c_corn.inside = 0
 
     def simple_ms_surface(self):
-        for j in range(len(self.cells)):
-            for i in range(len(self.cells[j])):
-                c_cell = self.cells[j][i]
+        for j in range(len(self.cell_grid)):
+            for i in range(len(self.cell_grid[j])):
+                c_cell = self.cell_grid[j][i]
                 inside = np.array([c_cell.corners[a].frac + 1e-8 < 0.5 for a in range(4)])
                 if not(all(inside)) and not(all(~inside)):
                     c_cell.set_topology()
-                    # for ccb in c_cell.borders:
-                    #     ccb.plot('green')
                     c_cell.interpolate()
-                    for ccb in c_cell.borders:
-                        self.mc_surf.append(ccb)
 
     def plot_ms_surface(self):
-        for j in range(len(self.cells)):
-            for i in range(len(self.cells[j])):
-                c_cell = self.cells[j][i]
-                inside = np.array([c_cell.corners[a].frac + 1e-8 < 0.5 for a in range(4)])
-                if not(all(inside)) and not(all(~inside)):
-                    for ccb in c_cell.borders:
-                        ccb.plot('black')
+        for j in range(len(self.cell_grid)):
+            for i in range(len(self.cell_grid[j])):
+                for ccb in self.cell_grid[j][i].borders:
+                    ccb.plot('pink')
 
+    def plot_cells(self):
+        for cl in range(len(self.cell_grid)):
+            for c in range(len(self.cell_grid[cl])):
+                self.cell_grid[cl][c].plot()
 
-    def fill(self):
-        c0 = []
-        c25 = []
-        c50 = []
-        c75 = []
-        c100 = []
-        for j in range(len(self.corners)):
-            for i in range(len(self.corners[j])):
-                c_corner = self.corners[j][i]
-                mfrac = round(c_corner.frac*4)
-                if (mfrac == 0):
-                    c0.append(c_corner.x)
-                elif (mfrac == 1):
-                    c25.append(c_corner.x)
-                elif (mfrac == 2):
-                    c50.append(c_corner.x)
-                elif (mfrac == 3):
-                    c75.append(c_corner.x)
-                elif (mfrac == 4):
-                    c100.append(c_corner.x)
-                else:
-                    print('ERROR: Invalid corner fraction {}'.format(c_corner.frac))
-                    sys.exit(1)
-        c0 = np.transpose(c0)
-        if (len(c0) > 0):
-            plt.scatter(c0[0], c0[1], color='purple')
-        c25 = np.transpose(c25)
-        if (len(c25) > 0):
-            plt.scatter(c25[0], c25[1], color='blue')
-        c50 = np.transpose(c50)
-        if (len(c50) > 0):
-            plt.scatter(c50[0], c50[1], color='green')
-        c75 = np.transpose(c75)
-        if (len(c75) > 0):
-            plt.scatter(c75[0], c75[1], color='orange')
-        c100 = np.transpose(c100)
-        if (len(c100) > 0):
-            plt.scatter(c100[0], c100[1], color='red')
-    
-        for j in range(len(self.cells)):
-            for i in range(len(self.cells[j])):
-                for vx in self.cells[j][i].voxels:
-                    if vx.type == -1:
-                        vx.plot('grey')
-                    elif vx.type == 0:
-                        vx.plot('orange')
-
-    def plot(self, clr):
-        for cl in self.cells:
-            for c in cl:
-                c.plot(clr)
+    def plot_voxels(self):
+        for vl in self.vox_grid:
+            for v in vl:
+                if v.type == 0:
+                    v.plot('black')
 
 # minimum distance of point x to any part of the polygon
 def hausdorff_distance(polygon, x):
@@ -756,102 +655,86 @@ def hausdorff_distance(polygon, x):
             norm = [c_norm[i] for i in range(3)]
     return dist, norm
 
-
-
-vrs = [30, 20, 10, 5]
+vrs = [30, 20, 10, 5, 1]
 
 nsides = 5
 circumradius = 2
 vox_size = 0.01
 signed_hausdorff = []
-for x in [False, True]:
+for x in [False]: #, True]:
     c_signed_hausdorff = []
     for vox_ratio in vrs:
         t0 = time.time()
-        polygon = RegularPolygon(circumradius, nsides)
-
-        # plt.figure()
-        # plt.gca().set_aspect('equal')
-        # polygon.plot('blue')
+        polygon = Polygon.regular_polygon(circumradius, nsides)
 
         l_c = vox_size*vox_ratio
-        ncr = (int(1.2*circumradius/l_c + 4)*np.ones(2)).astype(int)
+        ncr = (int(1.2*circumradius/l_c + 1)*np.ones(2)).astype(int)
         offset = np.array([0, 0.1])*l_c
         origin = -ncr*l_c + offset
         ncells = 2*ncr
-        grid = Grid(origin, ncells, l_c, scale_flag=x)
-
-        # create voxelized surface from approximating polygon
+        grid = Grid(polygon, origin, ncells, l_c, scale_flag=x)
+        
+        # create voxelized surface from polygon
         grid.create_voxels(polygon, vox_ratio)
 
         # get a (simplified) marching squares surface from voxel grid
         grid.simple_ms_surface()
+
+        # out red, in blue, mix black
+        # plt.figure()
+        # plt.gca().set_aspect('equal')
+        # polygon.plot('purple')
+        # grid.plot_cells()
+        # grid.plot_voxels()
         # grid.plot_ms_surface()
 
-        csd = []
-        for mcs in grid.mc_surf:
-            dist1, norm1 = hausdorff_distance(polygon, mcs.a)
-            csd.append(dist1)
 
-            dist2, norm2 = hausdorff_distance(polygon, mcs.b)
-            csd.append(dist2)
+#         csd = []
+#         for mcs in grid.mc_surf:
+#             dist1, norm1 = hausdorff_distance(polygon, mcs.a)
+#             csd.append(dist1)
 
-            # if dist2 > 0:
-            #     plt.plot([mcs.b[0], mcs.b[0] + dist2*norm2[0]],[mcs.b[1], mcs.b[1] + dist2*norm2[1]], color='green')
-            # else:
-            #     plt.plot([mcs.b[0], mcs.b[0] - dist2*norm2[0]],[mcs.b[1], mcs.b[1] - dist2*norm2[1]], color='red')
-            # if dist1 > 0:
-            #     plt.plot([mcs.a[0], mcs.a[0] + dist1*norm1[0]],[mcs.a[1], mcs.a[1] + dist1*norm1[1]], color='green')
-            # else:
-            #     plt.plot([mcs.a[0], mcs.a[0] - dist1*norm1[0]],[mcs.a[1], mcs.a[1] - dist1*norm1[1]], color='red')
-        #signed_hausdorff.append(np.array(csd)/l_c)
-        c_signed_hausdorff.append(np.array(csd)/l_c)
+#             dist2, norm2 = hausdorff_distance(polygon, mcs.b)
+#             csd.append(dist2)
+
+#             # if dist2 > 0:
+#             #     plt.plot([mcs.b[0], mcs.b[0] + dist2*norm2[0]],[mcs.b[1], mcs.b[1] + dist2*norm2[1]], color='green')
+#             # else:
+#             #     plt.plot([mcs.b[0], mcs.b[0] - dist2*norm2[0]],[mcs.b[1], mcs.b[1] - dist2*norm2[1]], color='red')
+#             # if dist1 > 0:
+#             #     plt.plot([mcs.a[0], mcs.a[0] + dist1*norm1[0]],[mcs.a[1], mcs.a[1] + dist1*norm1[1]], color='green')
+#             # else:
+#             #     plt.plot([mcs.a[0], mcs.a[0] - dist1*norm1[0]],[mcs.a[1], mcs.a[1] - dist1*norm1[1]], color='red')
+#         #signed_hausdorff.append(np.array(csd)/l_c)
+#         c_signed_hausdorff.append(np.array(csd)/l_c)
 
         # plt.xlim(-2.5, 2.5)
         # plt.ylim(-2.5, 2.5)
-        # grid.plot('black')
-        # polycurve.plot('red')
         # grid.fill()
-        print('Time for {}: {:.2f}'.format(vox_ratio, time.time() - t0))
-        print('Min: {:.2f} Max: {:.2f}'.format(min(c_signed_hausdorff[-1]), max(c_signed_hausdorff[-1])))
+        tf = time.time() - t0
+        tsc = 1000*tf/(len(grid.cell_grid)*len(grid.cell_grid[0]))
+        print('Time for {}: {:.2f} s ({:.2f} ms per cell)'.format(vox_ratio, tf, tsc))
+        # print('Min: {:.2f} Max: {:.2f}'.format(min(c_signed_hausdorff[-1]), max(c_signed_hausdorff[-1])))
     
-    signed_hausdorff.append(c_signed_hausdorff)
-    print()
+#     signed_hausdorff.append(c_signed_hausdorff)
+#     print()
 
-plt.figure()
-sfac = 2
-poss = np.linspace(1, len(signed_hausdorff[0]), len(signed_hausdorff[0]))*sfac
-sh0 = plt.boxplot(signed_hausdorff[0], patch_artist=True, positions=poss-0.3)
-for box in sh0['boxes']:
-    box.set_facecolor('red')
-sh1 = plt.boxplot(signed_hausdorff[1], patch_artist=True, positions=poss+0.3)
-for box in sh1['boxes']:
-    box.set_facecolor('blue')
-plt.plot([0, max(poss)+sfac], [0, 0], color='black')
-plt.grid()
-plt.xticks(poss, vrs)
-plt.title('double-counted hausdorff')
-plt.xlabel('Cell / Voxel Size Ratio')
-plt.ylabel('Hausdorff Distance / Cell Length')
-plt.xlim(0, max(poss)+sfac)
-plt.ylim(-0.5, 0.5)
-
-
-# %%
-
-# voxel fill ratios for corners
-vox_ratios = np.linspace(2, 10, 5).astype(int)
-allowed_fills = []
-
-plt.figure()
-for vr in vox_ratios:
-    nmax = vr**2
-    c_allowed = []
-    for n in range(nmax + 1):
-        c_allowed.append(n/nmax)
-    plt.scatter(c_allowed, [vr]*len(c_allowed))
-xts = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-plt.xticks(ticks=xts, labels=xts)
-plt.grid()
+# plt.figure()
+# sfac = 2
+# poss = np.linspace(1, len(signed_hausdorff[0]), len(signed_hausdorff[0]))*sfac
+# sh0 = plt.boxplot(signed_hausdorff[0], patch_artist=True, positions=poss-0.3)
+# for box in sh0['boxes']:
+#     box.set_facecolor('red')
+# sh1 = plt.boxplot(signed_hausdorff[1], patch_artist=True, positions=poss+0.3)
+# for box in sh1['boxes']:
+#     box.set_facecolor('blue')
+# plt.plot([0, max(poss)+sfac], [0, 0], color='black')
+# plt.grid()
+# plt.xticks(poss, vrs)
+# plt.title('double-counted hausdorff')
+# plt.xlabel('Cell / Voxel Size Ratio')
+# plt.ylabel('Hausdorff Distance / Cell Length')
+# plt.xlim(0, max(poss)+sfac)
+# plt.ylim(-0.5, 0.5)
 
 # %%
