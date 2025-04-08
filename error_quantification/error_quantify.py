@@ -174,6 +174,9 @@ class Cell:
         self.ncells = self.ixhi - self.ixlo  # [nx, ny] for cells in each direction
         self.cell_len = self.ncells*Cell.leaf_cell_lens # length of cell sides
         self.child_cells = []
+        self.subgrid = []
+        self.subgrid_in = []
+        self.subroot = None
         self.parent = parent
 
         # bounding box of corner objects, [bottom left, bottom right, top right, top left]
@@ -293,6 +296,9 @@ class Cell:
 
         for c in self.child_cells:
             c.sort_inout(new_polyline, inherit=self.in_flag)
+
+        if self.in_flag == -1 and all(self.ncells == 1):
+            self.subroot = Subcell.root_cell(self, Grid.vox_ratio, new_polyline)
 
     def add_voxel(self, vox):
         self.voxels.append(vox)
@@ -417,7 +423,125 @@ class Cell:
             new_borders.append(Line([new_endpts[0], new_endpts[1]], loc))
         self.borders = new_borders
 
-            
+
+# cells within the leaf cells down to the scale of voxels
+class Subcell:
+    full_polyline = None
+    voxel_ratio = 0
+    vox_len = 0
+    def __init__(self, ixlo, nvoxs, parent, leaf=None):
+        self.ixlo = ixlo
+        self.ixhi = ixlo + nvoxs
+        self.nvoxs = nvoxs  # [nx, ny] for voxels in each direction
+        self.child_cells = []
+        self.parent = parent
+        self.leaf = leaf
+        if leaf == None:
+            self.leaf = parent.leaf
+
+        # bounding box of corner objects, [bottom left, bottom right, top right, top left]
+        self.xlo = self.leaf.xlo + Subcell.vox_len*self.ixlo
+        self.xhi = self.xlo + Subcell.vox_len*self.nvoxs
+        self.center = (self.xhi + self.xlo)/2
+        
+        # 1 in , 0 out, -1 mixed
+        self.in_flag = -1
+
+        if all(self.nvoxs == 1):
+            self.leaf.subgrid[ixlo[1]][ixlo[0]] = self
+        elif any(self.nvoxs < 1):
+            print('ERROR: fatal error in subcell creation')
+            exit(1)
+        else:
+            # split the longer dimension in roughly half
+            a_dim = 0 if nvoxs[0] > nvoxs[1] else 1 # x (or y)
+            b_dim = 1 if a_dim == 0 else 0          # y (or x)
+            delta1 = int(self.nvoxs[a_dim]/2)    # lower half
+            delta2 = self.nvoxs[a_dim] - delta1  # upper half
+
+            # create lower half cell
+            diff = np.zeros(2).astype(int)
+            diff[a_dim] = delta1
+            diff[b_dim] = self.nvoxs[b_dim]
+            self.child_cells.append(Subcell(self.ixlo, diff, self))
+
+            # create upper half cell
+            diff[a_dim] = delta2
+            self.child_cells.append(Subcell(self.ixhi - diff, diff, self))
+
+    @classmethod
+    def root_cell(cls, c_leaf, voxel_ratio, polyline):
+        cls.full_polyline = polyline
+        cls.voxel_ratio = voxel_ratio
+        cls.vox_len = Cell.leaf_cell_lens[0]/voxel_ratio
+        c_leaf.subgrid = np.zeros((voxel_ratio, voxel_ratio)).astype(int).tolist()
+        new_root = cls(np.array([0,0]), np.array([voxel_ratio, voxel_ratio]), None, leaf=c_leaf)
+        new_root.sort_inout(polyline)
+        c_leaf.subgrid_in = np.array([[True if c_leaf.subgrid[n][m].in_flag == 1 else False for m in range(voxel_ratio)] for n in range(voxel_ratio)])
+        return new_root
+
+
+    def clip_polyline(self, polyline):
+        new_lines = []
+        ext_xlo = self.xlo - 1e-15
+        ext_xhi = self.xhi + 1e-15
+        # check existence of polyline and overall bounding box first
+        if not(polyline.empty_flag) and all(polyline.xlo < ext_xhi) and all(polyline.xhi > ext_xlo):
+            # line by line
+            for sd in polyline.sides:
+                # check line bounding box
+                if all(sd.xlo < ext_xhi) and all(sd.xhi > ext_xlo):
+                    og_line = [sd.a, sd.b]
+                    extrema = [min, max]
+                    clipped_line = []
+                    for i in range(2):
+                        if all(og_line[i] > ext_xlo) and all(og_line[i] < ext_xhi):
+                            clipped_line.append(og_line[i])
+                        else:
+                            # check for first intersection on 'i' side
+                            intersects = []
+                            t_vals = []
+                            dx = [sd.b[0] - sd.a[0], sd.b[1] - sd.a[1]]
+                            interim = np.ones(2)
+                            for j in range(2):
+                                k = (j + 1) % 2
+                                if (abs(dx[j]) > 1e-30):
+                                    for xlim in [self.xlo, self.xhi]:
+                                        t = (xlim[j] - sd.a[j])/dx[j]
+                                        y_int = t*dx[k] + sd.a[k]
+                                        if t > 0 and t < 1 and y_int > ext_xlo[k] and y_int < ext_xhi[k]:
+                                            t_vals.append(t)
+                                            interim[j] = xlim[j]
+                                            interim[k] = y_int
+                                            intersects.append(interim)
+                                
+                            # select best intersect if any valid
+                            if len(intersects):
+                                ind = t_vals.index(extrema[i](t_vals))
+                                clipped_line.append(intersects[ind])
+
+                    if len(clipped_line) == 2:
+                        new_lines.append(Line(clipped_line))
+                    # elif len(clipped_line) == 1:
+                    #     print('ERROR: failure to clip line to cell')
+                    #     exit(1)
+
+        return Polygon.line_polygon(new_lines)
+
+    def sort_inout(self, polyline, inherit=-1):
+        new_polyline = polyline
+        if inherit == -1:
+            # create new polyline with just relevant sections
+            new_polyline = self.clip_polyline(polyline)
+
+            # if no polyline -> use full poly to check CENTER point
+            if len(new_polyline.sides) < 1:
+                self.in_flag = Subcell.full_polyline.check_point_inside(self.center)
+        else:
+            self.in_flag = inherit
+
+        for c in self.child_cells:
+            c.sort_inout(new_polyline, inherit=self.in_flag)
 
 class Corner:
     def __init__(self, x):
@@ -426,12 +550,15 @@ class Corner:
         self.frac = 0
 
 class Grid:
-    def __init__(self, polygon, origin, ncells, cell_len, scale_flag=False):
+    vox_ratio = 0
+    def __init__(self, polygon, origin, ncells, cell_len, vox_ratio, scale_flag=False):
+        Grid.vox_ratio = vox_ratio
         self.scale_flag = scale_flag
         self.xlo = origin
         self.xhi = origin + ncells*cell_len
         self.ncells = ncells
         self.cell_len = cell_len
+        self.nvox = 0
 
         # possible x and y coordinates of corners in grid
         self.ylines = []
@@ -457,28 +584,7 @@ class Grid:
         # sort cells by polygon
         Cell.root_sort_inout(self.root_cell, polygon)
 
-    def sort(self, polygon):
-        final_coords = []
-        for s in polygon.sides:
-            if type(s) == Line:
-                x_intersect_pts = []
-                for xl in self.xlines:
-                    if xl >= s.xlo[0] and xl <= s.xhi[0]:
-                        c_y = s.get_y_from_x(xl)
-                        if c_y != None:
-                            x_intersect_pts.append([xl, c_y])
-                y_intersect_pts = []
-                for yl in self.ylines:
-                    if yl >= s.xlo[1] and yl <= s.xhi[1]:
-                        c_x = s.get_x_from_y(yl)
-                        if c_x != None:
-                            y_intersect_pts.append([c_x, yl])
-                final_coords += x_intersect_pts
-                final_coords += y_intersect_pts
-        final_coords = np.array(final_coords)
-        return final_coords
-
-    def create_voxels(self, polygon, voxel_ratio):
+    def create_voxels(self, voxel_ratio):
         voxel_ratio = int(voxel_ratio)
         voxel_size = Cell.leaf_cell_lens[0]/voxel_ratio
         ny = self.root_cell.ncells[1]
@@ -489,26 +595,31 @@ class Grid:
         for j in range(len(self.cell_grid)):
             for i in range(len(self.cell_grid[j])):
                 c_cell = self.cell_grid[j][i]
-                for n in range(voxel_ratio):
-                    for m in range(voxel_ratio):
-                        if c_cell.in_flag == 1:
-                            vox_flag = True
-                        elif c_cell.in_flag == 0:
-                            vox_flag = False
-                        else:
-                            diff = np.array([m, n])
-                            vx = c_cell.xlo + voxel_size*(0.5 + diff)
-                            vox_flag = polygon.check_point_inside(vx)
-                        
-                        vy = voxel_ratio*j + n
-                        vx = voxel_ratio*i + m
-                        c_vox = self.vox_grid[vy][vx]
-                        if vox_flag:
-                            c_vox.binary_fill()
-                        if j == 0 or i == 0 or j == len(self.cell_grid) - 1 or i == len(self.cell_grid[0]) - 1:
-                            c_vox.weight = 0
-                            c_vox.type = int(-1e5)
-                        c_cell.add_voxel(c_vox)
+                # whole cell is inside or outside
+                if c_cell.in_flag == 1 or c_cell.in_flag == 0:
+                    for n in range(voxel_ratio):
+                        for m in range(voxel_ratio):
+                            vy = voxel_ratio*j + n
+                            vx = voxel_ratio*i + m
+                            c_vox = self.vox_grid[vy][vx]
+                            if c_cell.in_flag:
+                                c_vox.binary_fill()
+                                self.nvox += 1
+                            c_cell.add_voxel(c_vox)
+                # cell is mixed
+                else:
+                    # split cell into regions like when cell grid was created
+                    # return subgrid of voxel_ratio**2 of valid positions
+                    subgrid_in = c_cell.subgrid_in
+                    for n in range(len(subgrid_in)):
+                        for m in range(len(subgrid_in[n])):
+                            vy = voxel_ratio*j + n
+                            vx = voxel_ratio*i + m
+                            c_vox = self.vox_grid[vy][vx]
+                            if subgrid_in[n][m] == 1:
+                                c_vox.binary_fill()
+                                self.nvox += 1
+                            c_cell.add_voxel(c_vox)
 
         # set voxel weights to something other than 0 or 1
         if self.scale_flag:
@@ -655,16 +766,27 @@ def hausdorff_distance(polygon, x):
             norm = [c_norm[i] for i in range(3)]
     return dist, norm
 
+def get_ms_dt(t0):
+    return 1000*(time.time() - t0)
+
+def get_dt(t0):
+    return time.time() - t0
+
 vrs = [30, 20, 10, 5, 1]
 
 nsides = 5
 circumradius = 2
-vox_size = 0.01
+vox_size = 0.02
 signed_hausdorff = []
+cno = 0
 for x in [False]: #, True]:
     c_signed_hausdorff = []
     for vox_ratio in vrs:
+        cno += 1
+        print('Case {:d}:'.format(cno))
         t0 = time.time()
+
+        bt0 = time.time()
         polygon = Polygon.regular_polygon(circumradius, nsides)
 
         l_c = vox_size*vox_ratio
@@ -672,13 +794,23 @@ for x in [False]: #, True]:
         offset = np.array([0, 0.1])*l_c
         origin = -ncr*l_c + offset
         ncells = 2*ncr
-        grid = Grid(polygon, origin, ncells, l_c, scale_flag=x)
+        print('\tinitialization: {:.3f} ms'.format(get_ms_dt(bt0)))
+
+        bt0 = time.time()
+        grid = Grid(polygon, origin, ncells, l_c, vox_ratio, scale_flag=x)
+        print('\tgrid creation: {:.3f} s ({:.3f} ms per cell)'.format(get_dt(bt0), get_ms_dt(bt0)/np.product(ncells)))
+
         
         # create voxelized surface from polygon
-        grid.create_voxels(polygon, vox_ratio)
+        bt0 = time.time()
+        grid.create_voxels(vox_ratio)
+        print('\tvoxel creation: {:.3f} s ({:.3f} ms per voxel)'.format(get_dt(bt0), get_ms_dt(bt0)/grid.nvox))
 
         # get a (simplified) marching squares surface from voxel grid
+        bt0 = time.time()
         grid.simple_ms_surface()
+        print('\tms surface creation: {:.3f} s ({:.3f} ms per cell)'.format(get_dt(bt0), get_ms_dt(bt0)/np.product(ncells)))
+
 
         # out red, in blue, mix black
         # plt.figure()
@@ -713,7 +845,7 @@ for x in [False]: #, True]:
         # grid.fill()
         tf = time.time() - t0
         tsc = 1000*tf/(len(grid.cell_grid)*len(grid.cell_grid[0]))
-        print('Time for {}: {:.2f} s ({:.2f} ms per cell)'.format(vox_ratio, tf, tsc))
+        print('\tTime for {}: {:.2f} s ({:.2f} ms per cell)'.format(vox_ratio, tf, tsc))
         # print('Min: {:.2f} Max: {:.2f}'.format(min(c_signed_hausdorff[-1]), max(c_signed_hausdorff[-1])))
     
 #     signed_hausdorff.append(c_signed_hausdorff)
