@@ -538,9 +538,10 @@ class Corner:
 
 class Grid:
     vox_ratio = 0
-    def __init__(self, polygon, origin, ncells, cell_len, vox_ratio, scale_flag=False):
+    def __init__(self, polygon, origin, ncells, cell_len, vox_ratio, scale_flag=False, new_baba=False):
         Grid.vox_ratio = vox_ratio
         self.scale_flag = scale_flag
+        self.new_baba = new_baba
         self.xlo = origin
         self.xhi = origin + ncells*cell_len
         self.ncells = ncells
@@ -656,7 +657,22 @@ class Grid:
             for j in range(len(self.vox_grid)):
                 for i in range(len(self.vox_grid[j])):
                     vox = self.vox_grid[j][i]
-                    vox.weight = 0.5*(1 + (0.5 + vox.type)*(2/(3*voxel_ratio)))
+                    dvox = (0.5 + vox.type)
+                    if self.new_baba:
+                        sl_scale = False
+                        s_thresh = vox.type + 2 if vox.type < 0 else vox.type - 2
+                        if i > 0 and j > 0 and self.vox_grid[j - 1][i - 1].type == s_thresh:
+                            sl_scale = True
+                        if i < len(self.vox_grid[j]) - 1 and j > 0 and self.vox_grid[j - 1][i + 1].type == s_thresh:
+                            sl_scale = True
+                        if i < len(self.vox_grid[j]) - 1 and j < len(self.vox_grid) - 1 and self.vox_grid[j + 1][i + 1].type == s_thresh:
+                            sl_scale = True
+                        if i > 0 and j < len(self.vox_grid) - 1 and self.vox_grid[j + 1][i - 1].type == s_thresh:
+                            sl_scale = True
+                        
+                        if sl_scale:
+                            dvox /= np.sqrt(2)
+                    vox.weight = 0.5*(1 + dvox*(2/(3*voxel_ratio)))
                     vox.weight = min(vox.weight, 1.0)
                     vox.weight = max(0.0, vox.weight)
 
@@ -766,8 +782,11 @@ def get_dt(t0):
 def run_case(shape_key, grid_ratio, voxel_ratio, off_coeffs):
     circumradius = 2
     signed_hausdorff = []
+    settings = [[False, False],
+                [True, False],
+                [True, True]]
 
-    for x in [False, True]:
+    for x in settings:
         print('GR: {:d}, VR: {:d}:'.format(grid_ratio, voxel_ratio))
         t0 = time.time()
 
@@ -780,7 +799,7 @@ def run_case(shape_key, grid_ratio, voxel_ratio, off_coeffs):
         origin = -ncr*l_c + offset
         ncells = 2*ncr
 
-        grid = Grid(polygon, origin, ncells, l_c, voxel_ratio, scale_flag=x)
+        grid = Grid(polygon, origin, ncells, l_c, voxel_ratio, scale_flag=x[0], new_baba=x[1])
 
         # create voxelized surface from polygon
         grid.create_voxels(voxel_ratio)
@@ -831,7 +850,7 @@ shape_dict = {'tri0'   : (3, 0),
               'triac0': (30, 0)}
 # technically 30 sided is triacontagon, tridecagon is 13
 shape_data = list(shape_dict.keys())
-grid_ratio = [2, 4, 8, 16, 32] #[64, 32, 16, 8, 4, 2]
+grid_ratio = [2, 4, 8, 16] #[64, 32, 16, 8, 4, 2]
 voxel_ratio = [2, 4, 8, 16] #[64, 32, 16, 8, 4, 2, 1]
 
 class Sample:
@@ -842,29 +861,38 @@ class Sample:
 
 old_samples = []
 new_samples = []
+new_new = []
 for vr in voxel_ratio:
     og_hdd = []
     new_hdd = []
+    new2_hdd = []
     osamp = []
     nsamp = []
+    n2samp = []
     for gr in grid_ratio:
         oc = np.array([0, 0])
         chdd = run_case('triac0', gr, vr, oc)
         og_hdd.append(chdd[0])
         new_hdd.append(chdd[1])
+        new2_hdd.append(chdd[2])
         osamp.append(Sample(chdd[0]))
         nsamp.append(Sample(chdd[1]))
+        n2samp.append(Sample(chdd[2]))
     old_samples.append(osamp)
     new_samples.append(nsamp)
+    new_new.append(n2samp)
     plt.figure()
     sfac = 2
     poss = np.linspace(1, len(og_hdd), len(og_hdd))*sfac
-    sh0 = plt.boxplot(og_hdd, patch_artist=True, positions=poss-0.3)
+    sh0 = plt.boxplot(og_hdd, patch_artist=True, positions=poss-0.6)
     for box in sh0['boxes']:
         box.set_facecolor('red')
-    sh1 = plt.boxplot(new_hdd, patch_artist=True, positions=poss+0.3)
+    sh1 = plt.boxplot(new_hdd, patch_artist=True, positions=poss)
     for box in sh1['boxes']:
         box.set_facecolor('blue')
+    sh2 = plt.boxplot(new2_hdd, patch_artist=True, positions=poss+0.6)
+    for box in sh2['boxes']:
+        box.set_facecolor('green')
     plt.plot([0, max(poss)+sfac], [0, 0], color='black')
     plt.grid()
     plt.xticks(poss, grid_ratio)
@@ -880,12 +908,16 @@ stdev_fig, stdev_ax = plt.subplots()
 for i in range(len(old_samples)):
     osamp = old_samples[i]
     nsamp = new_samples[i]
+    n2samp = new_new[i]
     xs = np.linspace(0, 1, len(osamp), endpoint=False)
     vr = str(voxel_ratio[i])
     mean_ax.scatter(xs, [samp.mean for samp in osamp], label=vr + ' VR', color=bn_colors[i])
     mean_ax.scatter(xs, [samp.mean for samp in nsamp], marker='x', color=bn_colors[i])
+    mean_ax.scatter(xs, [samp.mean for samp in n2samp], marker='v', color=bn_colors[i])
     stdev_ax.scatter(xs, [samp.stdev for samp in osamp], label=vr + ' VR', color=bn_colors[i])
     stdev_ax.scatter(xs, [samp.stdev for samp in nsamp], marker='x', color=bn_colors[i])
+    stdev_ax.scatter(xs, [samp.stdev for samp in n2samp], marker='v', color=bn_colors[i])
+
 mean_ax.grid()
 mean_ax.set_title('mean')
 mean_ax.set_xticks(xs, grid_ratio)
