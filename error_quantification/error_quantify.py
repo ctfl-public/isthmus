@@ -11,24 +11,6 @@ from scipy.spatial import ConvexHull
 import sys
 import time
 
-# %% estimate error of approximating polygons using curves
-
-eps_cs = [0.0001, 0.001, 0.01, 0.05] # acceptable area defect ratio relative to original polygon area, A_defect/A_polygon
-n = np.linspace(3, 20, 18).astype(int) # number of sides of polygon
-
-# radius of curvature ratio wrt polygon circumradius
-plt.plot(n, np.cos(np.pi/n), color='pink', linestyle='dashed', label='Inscribed Radius')
-for eps_c in eps_cs:
-    curve_ratio = np.sqrt(eps_c * np.sin(2*np.pi/n) / (2*(np.tan(np.pi/n) - np.pi/n)))
-    plt.plot(n, curve_ratio, label='e = {:.2f}%'.format(eps_c*100))
-plt.grid()
-plt.xticks(ticks=n, labels=n)
-plt.xlabel('Number of Sides')
-plt.ylabel('Curvature Radius/Circumradius')
-plt.legend()
-plt.xlim(3, 20)
-plt.ylim(0, 1.2)
-
 # %%
             
 class Line:
@@ -109,12 +91,13 @@ class Polygon:
         return cls(vertices, lines)
 
     @classmethod
-    def regular_polygon(cls, radius, nsides):
+    def regular_polygon(cls, radius, nsides, rot):
         vertices = []
         dtheta = 2*np.pi/nsides
+        rad_rot = (np.pi/180)*rot
         for i in range(nsides):
             # angles of corners on this line segment
-            theta = np.pi/2 + dtheta*i
+            theta = np.pi/2 + dtheta*i + rad_rot
             vertices.append([radius*np.cos(theta), radius*np.sin(theta)])
         return cls.point_polygon(vertices)
 
@@ -256,7 +239,6 @@ class Cell:
                             intersects = []
                             t_vals = []
                             dx = [sd.b[0] - sd.a[0], sd.b[1] - sd.a[1]]
-                            interim = np.ones(2)
                             for j in range(2):
                                 k = (j + 1) % 2
                                 if (abs(dx[j]) > 1e-30):
@@ -265,6 +247,7 @@ class Cell:
                                         y_int = t*dx[k] + sd.a[k]
                                         if t > 0 and t < 1 and y_int > ext_xlo[k] and y_int < ext_xhi[k]:
                                             t_vals.append(t)
+                                            interim = np.ones(2)
                                             interim[j] = xlim[j]
                                             interim[k] = y_int
                                             intersects.append(interim)
@@ -284,6 +267,8 @@ class Cell:
 
     def sort_inout(self, polyline, inherit=-1):
         new_polyline = polyline
+        if self.ixlo[0] == 5 and self.ixlo[1] == 10:
+            x = 1
         if inherit == -1:
             # create new polyline with just relevant sections
             new_polyline = self.clip_polyline(polyline)
@@ -298,7 +283,7 @@ class Cell:
             c.sort_inout(new_polyline, inherit=self.in_flag)
 
         if self.in_flag == -1 and all(self.ncells == 1):
-            self.subroot = Subcell.root_cell(self, Grid.vox_ratio, new_polyline)
+            self.subroot = Subcell.root_cell(self, Grid.vox_ratio, new_polyline, Cell.full_polygon)
 
     def add_voxel(self, vox):
         self.voxels.append(vox)
@@ -470,8 +455,8 @@ class Subcell:
             self.child_cells.append(Subcell(self.ixhi - diff, diff, self))
 
     @classmethod
-    def root_cell(cls, c_leaf, voxel_ratio, polyline):
-        cls.full_polyline = polyline
+    def root_cell(cls, c_leaf, voxel_ratio, polyline, full_poly):
+        cls.full_polyline = full_poly
         cls.voxel_ratio = voxel_ratio
         cls.vox_len = Cell.leaf_cell_lens[0]/voxel_ratio
         c_leaf.subgrid = np.zeros((voxel_ratio, voxel_ratio)).astype(int).tolist()
@@ -502,7 +487,6 @@ class Subcell:
                             intersects = []
                             t_vals = []
                             dx = [sd.b[0] - sd.a[0], sd.b[1] - sd.a[1]]
-                            interim = np.ones(2)
                             for j in range(2):
                                 k = (j + 1) % 2
                                 if (abs(dx[j]) > 1e-30):
@@ -511,6 +495,7 @@ class Subcell:
                                         y_int = t*dx[k] + sd.a[k]
                                         if t > 0 and t < 1 and y_int > ext_xlo[k] and y_int < ext_xhi[k]:
                                             t_vals.append(t)
+                                            interim = np.ones(2)
                                             interim[j] = xlim[j]
                                             interim[k] = y_int
                                             intersects.append(interim)
@@ -530,6 +515,8 @@ class Subcell:
 
     def sort_inout(self, polyline, inherit=-1):
         new_polyline = polyline
+        if self.leaf.ixlo[0] == 5 and self.leaf.ixlo[1] == 10:
+            x = 1
         if inherit == -1:
             # create new polyline with just relevant sections
             new_polyline = self.clip_polyline(polyline)
@@ -559,6 +546,7 @@ class Grid:
         self.ncells = ncells
         self.cell_len = cell_len
         self.nvox = 0
+        self.mc_surf = []
 
         # possible x and y coordinates of corners in grid
         self.ylines = []
@@ -616,7 +604,7 @@ class Grid:
                             vy = voxel_ratio*j + n
                             vx = voxel_ratio*i + m
                             c_vox = self.vox_grid[vy][vx]
-                            if subgrid_in[n][m] == 1:
+                            if subgrid_in[n][m]:
                                 c_vox.binary_fill()
                                 self.nvox += 1
                             c_cell.add_voxel(c_vox)
@@ -714,6 +702,8 @@ class Grid:
                 if not(all(inside)) and not(all(~inside)):
                     c_cell.set_topology()
                     c_cell.interpolate()
+                    for bd in c_cell.borders:
+                        self.mc_surf.append(bd)
 
     def plot_ms_surface(self):
         for j in range(len(self.cell_grid)):
@@ -772,47 +762,32 @@ def get_ms_dt(t0):
 def get_dt(t0):
     return time.time() - t0
 
-vrs = [30, 20, 10, 5, 1]
 
-nsides = 5
-circumradius = 2
-vox_size = 0.02
-signed_hausdorff = []
-cno = 0
-for x in [False]: #, True]:
-    c_signed_hausdorff = []
-    for vox_ratio in vrs:
-        cno += 1
-        print('Case {:d}:'.format(cno))
+def run_case(shape_key, grid_ratio, voxel_ratio, off_coeffs):
+    circumradius = 2
+    signed_hausdorff = []
+
+    for x in [False, True]:
+        print('GR: {:d}, VR: {:d}:'.format(grid_ratio, voxel_ratio))
         t0 = time.time()
 
-        bt0 = time.time()
-        polygon = Polygon.regular_polygon(circumradius, nsides)
+        shape = shape_dict[shape_key]
+        polygon = Polygon.regular_polygon(circumradius, shape[0], shape[1])
 
-        l_c = vox_size*vox_ratio
+        l_c = circumradius/grid_ratio
         ncr = (int(1.2*circumradius/l_c + 1)*np.ones(2)).astype(int)
-        offset = np.array([0, 0.1])*l_c
+        offset = off_coeffs*l_c
         origin = -ncr*l_c + offset
         ncells = 2*ncr
-        print('\tinitialization: {:.3f} ms'.format(get_ms_dt(bt0)))
 
-        bt0 = time.time()
-        grid = Grid(polygon, origin, ncells, l_c, vox_ratio, scale_flag=x)
-        print('\tgrid creation: {:.3f} s ({:.3f} ms per cell)'.format(get_dt(bt0), get_ms_dt(bt0)/np.product(ncells)))
+        grid = Grid(polygon, origin, ncells, l_c, voxel_ratio, scale_flag=x)
 
-        
         # create voxelized surface from polygon
-        bt0 = time.time()
-        grid.create_voxels(vox_ratio)
-        print('\tvoxel creation: {:.3f} s ({:.3f} ms per voxel)'.format(get_dt(bt0), get_ms_dt(bt0)/grid.nvox))
+        grid.create_voxels(voxel_ratio)
 
         # get a (simplified) marching squares surface from voxel grid
-        bt0 = time.time()
         grid.simple_ms_surface()
-        print('\tms surface creation: {:.3f} s ({:.3f} ms per cell)'.format(get_dt(bt0), get_ms_dt(bt0)/np.product(ncells)))
 
-
-        # out red, in blue, mix black
         # plt.figure()
         # plt.gca().set_aspect('equal')
         # polygon.plot('purple')
@@ -821,52 +796,106 @@ for x in [False]: #, True]:
         # grid.plot_ms_surface()
 
 
-#         csd = []
-#         for mcs in grid.mc_surf:
-#             dist1, norm1 = hausdorff_distance(polygon, mcs.a)
-#             csd.append(dist1)
+        csd = []
+        for mcs in grid.mc_surf:
+            dist1, norm1 = hausdorff_distance(polygon, mcs.a)
+            csd.append(dist1)
 
-#             dist2, norm2 = hausdorff_distance(polygon, mcs.b)
-#             csd.append(dist2)
+            dist2, norm2 = hausdorff_distance(polygon, mcs.b)
+            csd.append(dist2)
 
-#             # if dist2 > 0:
-#             #     plt.plot([mcs.b[0], mcs.b[0] + dist2*norm2[0]],[mcs.b[1], mcs.b[1] + dist2*norm2[1]], color='green')
-#             # else:
-#             #     plt.plot([mcs.b[0], mcs.b[0] - dist2*norm2[0]],[mcs.b[1], mcs.b[1] - dist2*norm2[1]], color='red')
-#             # if dist1 > 0:
-#             #     plt.plot([mcs.a[0], mcs.a[0] + dist1*norm1[0]],[mcs.a[1], mcs.a[1] + dist1*norm1[1]], color='green')
-#             # else:
-#             #     plt.plot([mcs.a[0], mcs.a[0] - dist1*norm1[0]],[mcs.a[1], mcs.a[1] - dist1*norm1[1]], color='red')
-#         #signed_hausdorff.append(np.array(csd)/l_c)
-#         c_signed_hausdorff.append(np.array(csd)/l_c)
+            # if dist2 > 0:
+            #     plt.plot([mcs.b[0], mcs.b[0] + dist2*norm2[0]],[mcs.b[1], mcs.b[1] + dist2*norm2[1]], color='green')
+            # else:
+            #     plt.plot([mcs.b[0], mcs.b[0] - dist2*norm2[0]],[mcs.b[1], mcs.b[1] - dist2*norm2[1]], color='red')
+            # if dist1 > 0:
+            #     plt.plot([mcs.a[0], mcs.a[0] + dist1*norm1[0]],[mcs.a[1], mcs.a[1] + dist1*norm1[1]], color='green')
+            # else:
+            #     plt.plot([mcs.a[0], mcs.a[0] - dist1*norm1[0]],[mcs.a[1], mcs.a[1] - dist1*norm1[1]], color='red')
 
-        # plt.xlim(-2.5, 2.5)
-        # plt.ylim(-2.5, 2.5)
-        # grid.fill()
         tf = time.time() - t0
         tsc = 1000*tf/(len(grid.cell_grid)*len(grid.cell_grid[0]))
-        print('\tTime for {}: {:.2f} s ({:.2f} ms per cell)'.format(vox_ratio, tf, tsc))
-        # print('Min: {:.2f} Max: {:.2f}'.format(min(c_signed_hausdorff[-1]), max(c_signed_hausdorff[-1])))
-    
-#     signed_hausdorff.append(c_signed_hausdorff)
-#     print()
+        print('\tTime for case: {:.2f} s ({:.2f} ms per cell)'.format(tf, tsc))
+        signed_hausdorff.append(np.array(csd)/l_c)
+        print('Min: {:.2f} Max: {:.2f}'.format(min(signed_hausdorff[-1]), max(signed_hausdorff[-1])))
+        print()
 
-# plt.figure()
-# sfac = 2
-# poss = np.linspace(1, len(signed_hausdorff[0]), len(signed_hausdorff[0]))*sfac
-# sh0 = plt.boxplot(signed_hausdorff[0], patch_artist=True, positions=poss-0.3)
-# for box in sh0['boxes']:
-#     box.set_facecolor('red')
-# sh1 = plt.boxplot(signed_hausdorff[1], patch_artist=True, positions=poss+0.3)
-# for box in sh1['boxes']:
-#     box.set_facecolor('blue')
-# plt.plot([0, max(poss)+sfac], [0, 0], color='black')
-# plt.grid()
-# plt.xticks(poss, vrs)
-# plt.title('double-counted hausdorff')
-# plt.xlabel('Cell / Voxel Size Ratio')
-# plt.ylabel('Hausdorff Distance / Cell Length')
-# plt.xlim(0, max(poss)+sfac)
-# plt.ylim(-0.5, 0.5)
+    return signed_hausdorff
+
+shape_dict = {'tri0'   : (3, 0),
+              'tri90'  : (3, 90),
+              'quad0'  : (4, 0),
+              'quad45' : (4, 45),
+              'pent0'  : (5, 0),
+              'hex0'   : (6, 0),
+              'triac0': (30, 0)}
+# technically 30 sided is triacontagon, tridecagon is 13
+shape_data = list(shape_dict.keys())
+grid_ratio = [2, 4, 8, 16, 32] #[64, 32, 16, 8, 4, 2]
+voxel_ratio = [2, 4, 8, 16] #[64, 32, 16, 8, 4, 2, 1]
+
+class Sample:
+    def __init__(self, array):
+        self.data = np.array(array)
+        self.mean = np.mean(self.data)
+        self.stdev = np.std(self.data)
+
+old_samples = []
+new_samples = []
+for vr in voxel_ratio:
+    og_hdd = []
+    new_hdd = []
+    osamp = []
+    nsamp = []
+    for gr in grid_ratio:
+        oc = np.array([0, 0])
+        chdd = run_case('triac0', gr, vr, oc)
+        og_hdd.append(chdd[0])
+        new_hdd.append(chdd[1])
+        osamp.append(Sample(chdd[0]))
+        nsamp.append(Sample(chdd[1]))
+    old_samples.append(osamp)
+    new_samples.append(nsamp)
+    plt.figure()
+    sfac = 2
+    poss = np.linspace(1, len(og_hdd), len(og_hdd))*sfac
+    sh0 = plt.boxplot(og_hdd, patch_artist=True, positions=poss-0.3)
+    for box in sh0['boxes']:
+        box.set_facecolor('red')
+    sh1 = plt.boxplot(new_hdd, patch_artist=True, positions=poss+0.3)
+    for box in sh1['boxes']:
+        box.set_facecolor('blue')
+    plt.plot([0, max(poss)+sfac], [0, 0], color='black')
+    plt.grid()
+    plt.xticks(poss, grid_ratio)
+    plt.title('doble-cont hausdorff vr {:d}'.format(vr))
+    plt.xlabel('Cell Length / Voxel Length')
+    plt.ylabel('Hausdorff Distance / Cell Length')
+    plt.xlim(0, max(poss)+sfac)
+    plt.ylim(-0.5, 0.5)
+
+bn_colors = ['blue', 'green', 'purple', 'orange', 'red', 'grey', 'black', 'brown', 'magenta', 'cyan']
+mean_fig, mean_ax = plt.subplots()
+stdev_fig, stdev_ax = plt.subplots()
+for i in range(len(old_samples)):
+    osamp = old_samples[i]
+    nsamp = new_samples[i]
+    xs = np.linspace(0, 1, len(osamp), endpoint=False)
+    vr = str(voxel_ratio[i])
+    mean_ax.scatter(xs, [samp.mean for samp in osamp], label=vr + ' VR', color=bn_colors[i])
+    mean_ax.scatter(xs, [samp.mean for samp in nsamp], marker='x', color=bn_colors[i])
+    stdev_ax.scatter(xs, [samp.stdev for samp in osamp], label=vr + ' VR', color=bn_colors[i])
+    stdev_ax.scatter(xs, [samp.stdev for samp in nsamp], marker='x', color=bn_colors[i])
+mean_ax.grid()
+mean_ax.set_title('mean')
+mean_ax.set_xticks(xs, grid_ratio)
+mean_ax.set_xlabel('Circumradius / Cell Length')
+mean_ax.legend()
+stdev_ax.grid()
+stdev_ax.set_title('stdev')
+stdev_ax.set_xticks(xs, grid_ratio)
+stdev_ax.set_xlabel('Circumradius / Cell Length')
+stdev_ax.legend()
+
 
 # %%
