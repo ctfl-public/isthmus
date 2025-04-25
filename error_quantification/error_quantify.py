@@ -133,6 +133,7 @@ class Voxel:
         self.size = v_size # side length
         self.type = -1
         self.weight = 0
+        self.finalized = False
 
     def binary_fill(self):
         self.weight = 1 # smoothed volume weight
@@ -181,6 +182,7 @@ class Cell:
         # empty except for leaf cells
         self.borders = [] # edges, used for marching squares interpolation
         self.voxels = []  # list of voxel objects owned by cell
+        self.neighbors = []
 
         if all(self.ncells == 1):
             Cell.grid.cell_grid[ixlo[1]][ixlo[0]] = self
@@ -293,7 +295,7 @@ class Cell:
         xhi = self.corners[2].x - 0.05*Cell.leaf_cell_lens
         xs = [xlo[0], xhi[0], xhi[0], xlo[0], xlo[0]]
         ys = [xlo[1], xlo[1], xhi[1], xhi[1], xlo[1]]
-        ltj = ['red', 'blue', 'green']
+        ltj = [(0.2,0.2,0.2), (0.8,0.8,0.2), (0.5,0.5,0.2)]
         plt.plot(xs, ys, color=ltj[self.in_flag])
 
     def set_topology(self):
@@ -515,14 +517,12 @@ class Subcell:
 
     def sort_inout(self, polyline, inherit=-1):
         new_polyline = polyline
-        if self.leaf.ixlo[0] == 5 and self.leaf.ixlo[1] == 10:
-            x = 1
         if inherit == -1:
             # create new polyline with just relevant sections
             new_polyline = self.clip_polyline(polyline)
 
             # if no polyline -> use full poly to check CENTER point
-            if len(new_polyline.sides) < 1:
+            if len(new_polyline.sides) < 1 or all(self.nvoxs == 1):
                 self.in_flag = Subcell.full_polyline.check_point_inside(self.center)
         else:
             self.in_flag = inherit
@@ -538,10 +538,9 @@ class Corner:
 
 class Grid:
     vox_ratio = 0
-    def __init__(self, polygon, origin, ncells, cell_len, vox_ratio, scale_flag=False, new_baba=False):
+    def __init__(self, polygon, origin, ncells, cell_len, vox_ratio, scale_flag=False):
         Grid.vox_ratio = vox_ratio
         self.scale_flag = scale_flag
-        self.new_baba = new_baba
         self.xlo = origin
         self.xhi = origin + ncells*cell_len
         self.ncells = ncells
@@ -572,6 +571,30 @@ class Grid:
 
         # sort cells by polygon
         Cell.root_sort_inout(self.root_cell, polygon)
+
+        # set neighbor cells
+        nnlim = 1
+        for j in range(len(self.cell_grid)):
+            for i in range(len(self.cell_grid[j])):
+                c_cell = self.cell_grid[j][i]
+                for nj in range(j - nnlim, j + nnlim + 1):
+                    if nj > -1 and nj < len(self.cell_grid):
+                        for ni in range(i - nnlim, i + nnlim + 1):
+                            if ni > -1 and ni < len(self.cell_grid[j]):
+                                c_cell.neighbors.append(self.cell_grid[nj][ni])
+
+        #     s_thresh = vox.type + 2 if vox.type < 0 else vox.type - 2
+        #     if i > 0 and j > 0 and self.vox_grid[j - 1][i - 1].type == s_thresh:
+        #         sl_scale = True
+        #     if i < len(self.vox_grid[j]) - 1 and j > 0 and self.vox_grid[j - 1][i + 1].type == s_thresh:
+        #         sl_scale = True
+        #     if i < len(self.vox_grid[j]) - 1 and j < len(self.vox_grid) - 1 and self.vox_grid[j + 1][i + 1].type == s_thresh:
+        #         sl_scale = True
+        #     if i > 0 and j < len(self.vox_grid) - 1 and self.vox_grid[j + 1][i - 1].type == s_thresh:
+        #         sl_scale = True
+                        
+
+
 
     def create_voxels(self, voxel_ratio):
         voxel_ratio = int(voxel_ratio)
@@ -611,16 +634,16 @@ class Grid:
                             c_cell.add_voxel(c_vox)
 
         # set voxel weights to something other than 0 or 1
-        if self.scale_flag:
-            level = 0
-            w_max = np.ceil((3*voxel_ratio/2) - 0.5)
-            w_min = np.floor(-(3*voxel_ratio/2) - 0.5)
-            while level <= w_max or (-level - 1) >= w_min:
-                t1 = level
-                t2 = -level - 1
-                for j in range(1, len(self.vox_grid) - 1):
-                    for i in range(1, len(self.vox_grid[j]) - 1):
-                        vox = self.vox_grid[j][i]
+        level = 0
+        w_max = np.ceil((3*voxel_ratio/2) - 0.5)
+        w_min = np.floor(-(3*voxel_ratio/2) - 0.5)
+        while level <= w_max or (-level - 1) >= w_min:
+            t1 = level
+            t2 = -level - 1
+            for j in range(1, len(self.vox_grid) - 1):
+                for i in range(1, len(self.vox_grid[j]) - 1):
+                    vox = self.vox_grid[j][i]
+                    if vox.finalized == False:
                         if vox.type == t1:
                             # check 4 cardinal neighbors, initially assume surrounded by voxels
                             surrounded = True
@@ -636,6 +659,8 @@ class Grid:
 
                             if surrounded:
                                 vox.type = t1 + 1
+                            else:
+                                vox.finalized = True
                         
                         elif vox.type == t2:
                             # check 4 cardinal neighbors, initially assume surrounded by voxels
@@ -651,27 +676,39 @@ class Grid:
 
                             if surrounded:
                                 vox.type = t2 - 1
-                level += 1
-                assert(level < 1000)
-            
+                            else:
+                                vox.finalized = True
+            level += 1
+            assert(level < 1000)
+
+        t1 = level
+        t2 = -level - 1
+        for j in range(1, len(self.vox_grid) - 1):
+            for i in range(1, len(self.vox_grid[j]) - 1):
+                vox = self.vox_grid[j][i]
+                if vox.finalized == False:
+                    vox.finalized = True
+
+
+        if self.scale_flag:
             for j in range(len(self.vox_grid)):
                 for i in range(len(self.vox_grid[j])):
                     vox = self.vox_grid[j][i]
                     dvox = (0.5 + vox.type)
-                    if self.new_baba:
-                        sl_scale = False
-                        s_thresh = vox.type + 2 if vox.type < 0 else vox.type - 2
-                        if i > 0 and j > 0 and self.vox_grid[j - 1][i - 1].type == s_thresh:
-                            sl_scale = True
-                        if i < len(self.vox_grid[j]) - 1 and j > 0 and self.vox_grid[j - 1][i + 1].type == s_thresh:
-                            sl_scale = True
-                        if i < len(self.vox_grid[j]) - 1 and j < len(self.vox_grid) - 1 and self.vox_grid[j + 1][i + 1].type == s_thresh:
-                            sl_scale = True
-                        if i > 0 and j < len(self.vox_grid) - 1 and self.vox_grid[j + 1][i - 1].type == s_thresh:
-                            sl_scale = True
+                    # if self.new_baba:
+                    #     sl_scale = False
+                    #     s_thresh = vox.type + 2 if vox.type < 0 else vox.type - 2
+                    #     if i > 0 and j > 0 and self.vox_grid[j - 1][i - 1].type == s_thresh:
+                    #         sl_scale = True
+                    #     if i < len(self.vox_grid[j]) - 1 and j > 0 and self.vox_grid[j - 1][i + 1].type == s_thresh:
+                    #         sl_scale = True
+                    #     if i < len(self.vox_grid[j]) - 1 and j < len(self.vox_grid) - 1 and self.vox_grid[j + 1][i + 1].type == s_thresh:
+                    #         sl_scale = True
+                    #     if i > 0 and j < len(self.vox_grid) - 1 and self.vox_grid[j + 1][i - 1].type == s_thresh:
+                    #         sl_scale = True
                         
-                        if sl_scale:
-                            dvox /= np.sqrt(2)
+                    #     if sl_scale:
+                    #         dvox /= np.sqrt(2)
                     vox.weight = 0.5*(1 + dvox*(2/(3*voxel_ratio)))
                     vox.weight = min(vox.weight, 1.0)
                     vox.weight = max(0.0, vox.weight)
@@ -722,10 +759,14 @@ class Grid:
                         self.mc_surf.append(bd)
 
     def plot_ms_surface(self):
+        if self.scale_flag:
+            hue = 'pink'
+        else:
+            hue = 'blue'
         for j in range(len(self.cell_grid)):
             for i in range(len(self.cell_grid[j])):
                 for ccb in self.cell_grid[j][i].borders:
-                    ccb.plot('pink')
+                    ccb.plot(hue)
 
     def plot_cells(self):
         for cl in range(len(self.cell_grid)):
@@ -738,32 +779,39 @@ class Grid:
                 if v.type == 0:
                     v.plot('black')
 
+# minimum distance of point x to any part of a line segment
+def line_hausdorff_distance(line, x):
+    ax = np.append(x - line.a, [0])
+    ab = np.append(line.b - line.a, [0])
+    line_length = np.linalg.norm(ab)
+    cross = np.cross(ax, ab)
+    frac = np.dot(ax, ab)/line_length**2
+    if frac < 0:
+        c_dist = np.linalg.norm(ax)
+        c_norm = -ax/c_dist
+    elif frac > 1:
+        vec = np.append(x - line.b, [0])
+        c_dist = np.linalg.norm(vec)
+        c_norm = -vec/c_dist
+    else:
+        norm_cross = np.linalg.norm(cross)
+        if norm_cross < 1e-10:
+            c_dist = 0
+            c_norm = np.zeros(3)
+        else:
+            c_dist = norm_cross/line_length
+            bign = np.cross(ab, cross)
+            c_norm = -bign/np.linalg.norm(bign)
+
+    return c_dist, c_norm, cross
+
+
 # minimum distance of point x to any part of the polygon
-def hausdorff_distance(polygon, x):
+def polygon_hausdorff_distance(polyline, x):
     dist = 1e12
     norm = [0,0,0]
-    for line in polygon.sides:
-        ax = np.append(x - line.a, [0])
-        ab = np.append(line.b - line.a, [0])
-        line_length = np.linalg.norm(ab)
-        cross = np.cross(ax, ab)
-        frac = np.dot(ax, ab)/line_length**2
-        if frac < 0:
-            c_dist = np.linalg.norm(ax)
-            c_norm = -ax/c_dist
-        elif frac > 1:
-            vec = np.append(x - line.b, [0])
-            c_dist = np.linalg.norm(vec)
-            c_norm = -vec/c_dist
-        else:
-            norm_cross = np.linalg.norm(cross)
-            if norm_cross < 1e-10:
-                c_dist = 0
-                c_norm = np.zeros(3)
-            else:
-                c_dist = norm_cross/line_length
-                bign = np.cross(ab, cross)
-                c_norm = -bign/np.linalg.norm(bign)
+    for line in polyline:
+        c_dist, c_norm, cross = line_hausdorff_distance(line, x)
         
         if c_dist < abs(dist):
             dist = c_dist
@@ -778,13 +826,32 @@ def get_ms_dt(t0):
 def get_dt(t0):
     return time.time() - t0
 
+def plot_geometry(grid, polygon):
+    plt.figure()
+    plt.gca().set_aspect('equal')
+    polygon.plot('purple')
+    grid.plot_cells()
+    grid.plot_voxels()
+    grid.plot_ms_surface()
+    for mcs in grid.mc_surf:
+        dist1, norm1 = polygon_hausdorff_distance(polygon.sides, mcs.a)
+
+        dist2, norm2 = polygon_hausdorff_distance(polygon.sides, mcs.b)
+
+        if dist2 > 0:
+            plt.plot([mcs.b[0], mcs.b[0] + dist2*norm2[0]],[mcs.b[1], mcs.b[1] + dist2*norm2[1]], color='green')
+        else:
+            plt.plot([mcs.b[0], mcs.b[0] - dist2*norm2[0]],[mcs.b[1], mcs.b[1] - dist2*norm2[1]], color='red')
+        if dist1 > 0:
+            plt.plot([mcs.a[0], mcs.a[0] + dist1*norm1[0]],[mcs.a[1], mcs.a[1] + dist1*norm1[1]], color='green')
+        else:
+            plt.plot([mcs.a[0], mcs.a[0] - dist1*norm1[0]],[mcs.a[1], mcs.a[1] - dist1*norm1[1]], color='red')
+
 
 def run_case(shape_key, grid_ratio, voxel_ratio, off_coeffs):
     circumradius = 2
     signed_hausdorff = []
-    settings = [[False, False],
-                [True, False],
-                [True, True]]
+    settings = [False, True]
 
     for x in settings:
         print('GR: {:d}, VR: {:d}:'.format(grid_ratio, voxel_ratio))
@@ -799,7 +866,7 @@ def run_case(shape_key, grid_ratio, voxel_ratio, off_coeffs):
         origin = -ncr*l_c + offset
         ncells = 2*ncr
 
-        grid = Grid(polygon, origin, ncells, l_c, voxel_ratio, scale_flag=x[0], new_baba=x[1])
+        grid = Grid(polygon, origin, ncells, l_c, voxel_ratio, scale_flag=x)
 
         # create voxelized surface from polygon
         grid.create_voxels(voxel_ratio)
@@ -807,36 +874,32 @@ def run_case(shape_key, grid_ratio, voxel_ratio, off_coeffs):
         # get a (simplified) marching squares surface from voxel grid
         grid.simple_ms_surface()
 
-        # plt.figure()
-        # plt.gca().set_aspect('equal')
-        # polygon.plot('purple')
-        # grid.plot_cells()
-        # grid.plot_voxels()
-        # grid.plot_ms_surface()
-
-
         csd = []
-        for mcs in grid.mc_surf:
-            dist1, norm1 = hausdorff_distance(polygon, mcs.a)
-            csd.append(dist1)
+        nbvox = 0
+        out_bvox = 0
+        for j in range(len(grid.cell_grid)):
+            for i in range(len(grid.cell_grid[j])):
+                c_cell = grid.cell_grid[j][i]
+                borders = [c_bord for neighbor in c_cell.neighbors for c_bord in neighbor.borders]
+                edgee = np.array([v.type == 0 for v in c_cell.voxels])
+                if len(borders) < 1 and any(edgee):
+                    print('NO BORDERS')
+                for vox in c_cell.voxels:
+                    if vox.type == 0:
+                        dist, norm = polygon_hausdorff_distance(borders, vox.x)
+                        csd.append(dist)
+                        nbvox += 1
+                        if dist < 0:
+                            out_bvox += 1
 
-            dist2, norm2 = hausdorff_distance(polygon, mcs.b)
-            csd.append(dist2)
-
-            # if dist2 > 0:
-            #     plt.plot([mcs.b[0], mcs.b[0] + dist2*norm2[0]],[mcs.b[1], mcs.b[1] + dist2*norm2[1]], color='green')
-            # else:
-            #     plt.plot([mcs.b[0], mcs.b[0] - dist2*norm2[0]],[mcs.b[1], mcs.b[1] - dist2*norm2[1]], color='red')
-            # if dist1 > 0:
-            #     plt.plot([mcs.a[0], mcs.a[0] + dist1*norm1[0]],[mcs.a[1], mcs.a[1] + dist1*norm1[1]], color='green')
-            # else:
-            #     plt.plot([mcs.a[0], mcs.a[0] - dist1*norm1[0]],[mcs.a[1], mcs.a[1] - dist1*norm1[1]], color='red')
+        #plot_geometry(grid, polygon)
 
         tf = time.time() - t0
         tsc = 1000*tf/(len(grid.cell_grid)*len(grid.cell_grid[0]))
         print('\tTime for case: {:.2f} s ({:.2f} ms per cell)'.format(tf, tsc))
         signed_hausdorff.append(np.array(csd)/l_c)
         print('Min: {:.2f} Max: {:.2f}'.format(min(signed_hausdorff[-1]), max(signed_hausdorff[-1])))
+        print('Percent border voxels outside: {:.2f} %'.format(100*out_bvox/nbvox))
         print()
 
     return signed_hausdorff
@@ -851,7 +914,8 @@ shape_dict = {'tri0'   : (3, 0),
 # technically 30 sided is triacontagon, tridecagon is 13
 shape_data = list(shape_dict.keys())
 grid_ratio = [2, 4, 8, 16] #[64, 32, 16, 8, 4, 2]
-voxel_ratio = [2, 4, 8, 16] #[64, 32, 16, 8, 4, 2, 1]
+voxel_ratio = [1, 2, 4, 8] #[64, 32, 16, 8, 4, 2, 1]
+s_name = 'triac0'
 
 class Sample:
     def __init__(self, array):
@@ -859,48 +923,53 @@ class Sample:
         self.mean = np.mean(self.data)
         self.stdev = np.std(self.data)
 
+def violin_settings(v_plot, hue):
+    for box in v_plot['bodies']:
+        box.set_color(hue)
+        box.set_alpha(0.7)
+    v_plot['cmedians'].set_color('black')
+    v_plot['cmins'].set_color('black')
+    v_plot['cmaxes'].set_color('black')
+    v_plot['cbars'].set_color('black')
+
 old_samples = []
 new_samples = []
-new_new = []
 for vr in voxel_ratio:
     og_hdd = []
     new_hdd = []
-    new2_hdd = []
     osamp = []
     nsamp = []
-    n2samp = []
     for gr in grid_ratio:
         oc = np.array([0, 0])
-        chdd = run_case('triac0', gr, vr, oc)
+        chdd = run_case(s_name, gr, vr, oc)
         og_hdd.append(chdd[0])
         new_hdd.append(chdd[1])
-        new2_hdd.append(chdd[2])
         osamp.append(Sample(chdd[0]))
         nsamp.append(Sample(chdd[1]))
-        n2samp.append(Sample(chdd[2]))
     old_samples.append(osamp)
     new_samples.append(nsamp)
-    new_new.append(n2samp)
     plt.figure()
     sfac = 2
     poss = np.linspace(1, len(og_hdd), len(og_hdd))*sfac
-    sh0 = plt.boxplot(og_hdd, patch_artist=True, positions=poss-0.6)
-    for box in sh0['boxes']:
-        box.set_facecolor('red')
-    sh1 = plt.boxplot(new_hdd, patch_artist=True, positions=poss)
-    for box in sh1['boxes']:
-        box.set_facecolor('blue')
-    sh2 = plt.boxplot(new2_hdd, patch_artist=True, positions=poss+0.6)
-    for box in sh2['boxes']:
-        box.set_facecolor('green')
-    plt.plot([0, max(poss)+sfac], [0, 0], color='black')
+    sh0 = plt.violinplot(og_hdd, positions=poss-0.3, showmedians=True)
+    violin_settings(sh0, 'red')
+    sh1 = plt.violinplot(new_hdd, positions=poss+0.3, showmedians=True)
+    violin_settings(sh1, 'blue')
+    plt.plot([0, max(poss)+sfac], [0, 0], color='black', linestyle='dashed')
+    good_lim = 0.5/vr
+    plt.plot([0, max(poss)+sfac], [2*good_lim]*2, color='black', linestyle='dashed')
+    plt.plot([0, max(poss)+sfac], [good_lim]*2, color='black')
     plt.grid()
     plt.xticks(poss, grid_ratio)
-    plt.title('doble-cont hausdorff vr {:d}'.format(vr))
-    plt.xlabel('Cell Length / Voxel Length')
+    plt.title(s_name + ' haus vr {:d}'.format(vr))
+    plt.xlabel('Circumradius / Cell Length')
     plt.ylabel('Hausdorff Distance / Cell Length')
     plt.xlim(0, max(poss)+sfac)
-    plt.ylim(-0.5, 0.5)
+    if vr == 1:
+        plt.ylim(-.5, 1.5)
+    else:
+        plt.ylim(-0.5, 0.5)
+        plt.yticks(np.round(np.arange(-0.5, 0.6, 0.1), 1))
 
 bn_colors = ['blue', 'green', 'purple', 'orange', 'red', 'grey', 'black', 'brown', 'magenta', 'cyan']
 mean_fig, mean_ax = plt.subplots()
@@ -908,15 +977,12 @@ stdev_fig, stdev_ax = plt.subplots()
 for i in range(len(old_samples)):
     osamp = old_samples[i]
     nsamp = new_samples[i]
-    n2samp = new_new[i]
     xs = np.linspace(0, 1, len(osamp), endpoint=False)
     vr = str(voxel_ratio[i])
     mean_ax.scatter(xs, [samp.mean for samp in osamp], label=vr + ' VR', color=bn_colors[i])
     mean_ax.scatter(xs, [samp.mean for samp in nsamp], marker='x', color=bn_colors[i])
-    mean_ax.scatter(xs, [samp.mean for samp in n2samp], marker='v', color=bn_colors[i])
     stdev_ax.scatter(xs, [samp.stdev for samp in osamp], label=vr + ' VR', color=bn_colors[i])
     stdev_ax.scatter(xs, [samp.stdev for samp in nsamp], marker='x', color=bn_colors[i])
-    stdev_ax.scatter(xs, [samp.stdev for samp in n2samp], marker='v', color=bn_colors[i])
 
 mean_ax.grid()
 mean_ax.set_title('mean')
