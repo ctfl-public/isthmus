@@ -10,6 +10,7 @@ import pandas as pd
 from scipy.spatial import ConvexHull
 import sys
 import time
+import copy
 
 # %%
             
@@ -46,6 +47,10 @@ class Line:
         self.vox_refs = []
         self.vox_fracs = []
         self.scalar = 0
+
+        self.new_vox_refs = []
+        self.new_vox_fracs = []
+        self.new_intersects = []
 
     def get_ends(self):
         return self.endpts
@@ -151,6 +156,9 @@ class Voxel:
         
         self.proj_surfaces = []
         self.scalar = 0
+
+        self.new_proj_surfaces = []
+        self.new_scalar = 0
 
     def binary_fill(self):
         self.weight = 1 # smoothed volume weight
@@ -858,6 +866,74 @@ class Grid:
         if (low_area):
             print('WARNING: {:.1f} % of triangles have (near-)zero area intersected by voxel faces'.format(100*low_area/len(self.mc_surf)))
 
+    # associate each triangle to voxels based on inward normal view of voxel faces
+    def new_voxels_to_surfaces(self):        
+        # first assign voxels to each triangle in each cell
+        for j in range(len(self.cell_grid)):
+            for i in range(len(self.cell_grid[j])):
+                c_cell = self.cell_grid[j][i]
+                
+                # set neighbor cells
+                c_neighbors = []
+                nnlim = 3
+                for nj in range(j - nnlim, j + nnlim + 1):
+                    if nj > -1 and nj < len(self.cell_grid):
+                        for ni in range(i - nnlim, i + nnlim + 1):
+                            if ni > -1 and ni < len(self.cell_grid[j]):
+                                c_neighbors.append(self.cell_grid[nj][ni])
+
+                # collect all surfaces in current and neighboring cells
+                c_bords = []
+                for neighbor in c_neighbors:
+                    c_bords += neighbor.borders
+                
+                zero_voxs = [vox for vox in c_cell.voxels if vox.type == 0]
+                for vox in zero_voxs:
+                    # find closest surface point from vox center to nearby borders
+                    bord_cands = []
+                    for t in c_bords:
+                        c_dist, intersect, end_flag = scalar_hausdorff(t, vox.x)
+                        bord_cands.append(Intersect(t, c_dist, intersect, end_flag))
+                        
+                    if len(bord_cands):
+                        # find corner pairs first
+                        final_cands = [bord_cands[0]]
+                        for i in range(1, len(bord_cands)):
+                            bc = bord_cands[i]
+                            partner = False
+                            if bc.endpt_flag:
+                                for fc in final_cands:
+                                    # check and assign if partner
+                                    partner = fc.check_partner(bc)
+                            if partner == False:        
+                                final_cands.append(bc)
+
+                        # find intersect with smallest distance
+                        final_dists = [fc.dist for fc in final_cands]
+                        final_ind = final_dists.index(min(final_dists))
+                        final_intersect = final_cands[final_ind]
+                        final_intersect.allocate_voxel(vox)
+
+                    else:
+                        print('WARNING: no border found for voxel at {}'.format(vox.x))
+
+        # now normalize scalar fractions by total voxel face area intercepted by the triangle
+        low_area = 0
+        for t in self.mc_surf:
+            t.new_vox_fracs = np.array(t.new_vox_fracs)
+            total_area = t.new_vox_fracs.sum()
+            if (total_area < 0.49): # if no voxels assigned, even a shared one
+                low_area += 1
+                print('Uh oh, no voxel face area available for this triangle')
+                print(t.a)
+                print(t.b)
+                print(t.new_vox_fracs)
+                print()
+            t.new_vox_fracs = t.new_vox_fracs / total_area
+        if (low_area):
+            print('WARNING: {:.1f} % of triangles have (near-)zero area intersected by voxel faces'.format(100*low_area/len(self.mc_surf)))
+
+
     # theta_fn is function of theta for the scalar per unit length value
     def apply_scalars(self, theta_fn):
         plt.figure()
@@ -874,37 +950,32 @@ class Grid:
             for i in range(len(surf.vox_refs)):
                 vox = surf.vox_refs[i]
                 vox.scalar += surf.scalar*surf.vox_fracs[i]
+            for i in range(len(surf.new_vox_refs)):
+                vox = surf.new_vox_refs[i]
+                vox.new_scalar += surf.scalar*surf.new_vox_fracs[i]
         transsurf = np.transpose(surf_pts)
         plt.scatter(transsurf[0]*180/np.pi, transsurf[1], color='red', marker='x', label='Surface')
 
-        vox_pts_hi = []
-        vox_pts_lo = []
         vox_guess = []
+        new_vox_guess = []
         for j in range(len(self.vox_grid)):
             for i in range(len(self.vox_grid[j])):
                 vox = self.vox_grid[j][i]
                 if vox.type == 0:
                     theta = np.arctan2(vox.x[1], vox.x[0])
-                    vsboi = np.array([vox.scalar/vox.size, vox.scalar/(vox.size*np.sqrt(2))])
-                    vox_pts_hi.append([theta, max(vsboi)])
-                    vox_pts_lo.append([theta, min(vsboi)])
                     exp_factor = np.sqrt(sum([f.exposed for f in vox.faces]))
                     vox_guess.append([theta, vox.scalar/(vox.size*exp_factor)])
-        transvox_hi = np.transpose(vox_pts_hi)
-        transvox_lo = np.transpose(vox_pts_lo)
-        plt.scatter(transvox_hi[0]*180/np.pi, transvox_hi[1], color='blue', marker='v', label='Vox Hi')
-        plt.scatter(transvox_lo[0]*180/np.pi, transvox_lo[1], color='blue', marker='^', label='Vox Lo')
-        # add 'error bars' between voxel values
-        vox_cent = (transvox_hi[1] + transvox_lo[1])/2
-        vox_err = transvox_hi[1] - vox_cent
-        plt.errorbar(transvox_hi[0]*180/np.pi, vox_cent, yerr=vox_err, fmt='none', color='blue')
+                    new_vox_guess.append([theta, vox.new_scalar/(vox.size*exp_factor)])
 
         transvox_guess = np.transpose(vox_guess)
-        plt.scatter(transvox_guess[0]*180/np.pi, transvox_guess[1], color='pink')
+        transvox_new_guess = np.transpose(new_vox_guess)
+        plt.scatter(transvox_guess[0]*180/np.pi, transvox_guess[1], color='blue', marker='v', label='Voxel Proj')
+        plt.scatter(transvox_new_guess[0]*180/np.pi, transvox_new_guess[1], color='purple', marker='^', label='Voxel New')
         plt.legend()
         plt.grid()
         plt.xlabel('Centroid Theta')
         plt.ylabel('Scalar per Unit Length')
+        plt.xlim(-200, 200)
         plt.title('vr ' + str(self.vox_ratio))
 
     def simple_ms_surface(self):
@@ -928,6 +999,15 @@ class Grid:
                 for ccb in self.cell_grid[j][i].borders:
                     ccb.plot(hue)
 
+        for j in range(len(self.cell_grid)):
+            for i in range(len(self.cell_grid[j])):
+                for ccb in self.cell_grid[j][i].borders:
+                    for k in range(len(ccb.new_vox_refs)):
+                        vx = ccb.new_vox_refs[k].x
+                        ix = ccb.new_intersects[k]
+                        coords = np.transpose([vx, ix])
+                        plt.plot(coords[0], coords[1], color='green')
+
     def plot_cells(self):
         for cl in range(len(self.cell_grid)):
             for c in range(len(self.cell_grid[cl])):
@@ -938,6 +1018,74 @@ class Grid:
             for v in vl:
                 if v.type == 0:
                     v.plot('black')
+
+class Intersect:
+    def __init__(self, line, dist, intersect, end_flag):
+        self.owner = line
+        self.dist = dist
+        self.x = intersect
+        self.endpt_flag = end_flag
+        self.partner = None # another line if a corner
+
+    def check_partner(self, potential):
+        if self.endpt_flag and potential.endpt_flag:
+            lm = min(self.owner.length, potential.owner.length)
+            xlo = self.x - 0.001*lm*np.ones(2)
+            xhi = self.x + 0.001*lm*np.ones(2)
+            if all(potential.x < xhi) and all(potential.x > xlo):
+                if self.partner == None:
+                    self.partner = potential.owner
+                    return True
+                else:
+                    print('ERROR: >2 line segments present at a corner')
+                    exit(1)
+
+        return False
+    
+    def allocate_voxel(self, vox):
+        if self.partner == None:
+            self.owner.new_vox_refs.append(vox)
+            self.owner.new_vox_fracs.append(1)
+            self.owner.new_intersects.append(copy.copy(self.x))
+        else:
+            self.owner.new_vox_refs.append(vox)
+            self.partner.new_vox_refs.append(vox)
+            self.owner.new_intersects.append(copy.copy(self.x))
+            self.partner.new_intersects.append(copy.copy(self.x))
+
+            self.owner.new_vox_fracs.append(0.5)
+            self.partner.new_vox_fracs.append(0.5)
+
+# minimum distance of point x to any part of a line segment ab
+def scalar_hausdorff(line, x):
+    ax = x - line.a
+    ab = line.b - line.a
+    ab_len = np.linalg.norm(ab)
+    ax_len = np.linalg.norm(ax)
+    frac = np.dot(ax, ab)/ab_len**2
+
+    end_flag = False
+    if frac <= 0:
+        c_dist = np.linalg.norm(ax)
+        intersect = copy.copy(line.a)
+        end_flag = True
+    elif frac >= 1:
+        c_dist = np.linalg.norm(x - line.b)
+        intersect = copy.copy(line.b)
+        end_flag = True
+    else:
+        ax3 = np.append(ax, [0])
+        ab3 = np.append(ab, [0])
+        cross = np.cross(ax3, ab3)
+        norm_cross = np.linalg.norm(cross)
+        if norm_cross/(ax_len*ab_len) < 1e-5:
+            c_dist = 0
+            intersect = copy.copy(x)
+        else:
+            c_dist = norm_cross/ab_len
+            intersect = line.a + frac*ab
+
+    return c_dist, intersect, end_flag
 
 # get length of the intersection of two line segments
 def get_intersection_area(base, proj):
@@ -1062,6 +1210,9 @@ def run_case(shape_key, grid_ratio, voxel_ratio, off_coeffs):
         # divide voxels among surface elements
         grid.voxels_to_surfaces()
 
+        # try simpler method
+        grid.new_voxels_to_surfaces()
+
         grid.apply_scalars(np.cos)
 
         csd = []
@@ -1103,8 +1254,8 @@ shape_dict = {'tri0'   : (3, 0),
               'triac0': (30, 0)}
 # technically 30 sided is triacontagon, tridecagon is 13
 shape_data = list(shape_dict.keys())
-grid_ratio = [2, 4, 8] #[64, 32, 16, 8, 4, 2]
-voxel_ratio = [1, 2, 4, 8] #[64, 32, 16, 8, 4, 2, 1]
+grid_ratio = [2, 4] #[64, 32, 16, 8, 4, 2]
+voxel_ratio = [1, 2] #[64, 32, 16, 8, 4, 2, 1]
 s_name = 'quad0'
 
 class Sample:
