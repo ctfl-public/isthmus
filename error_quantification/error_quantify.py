@@ -1135,17 +1135,15 @@ def run_case(shape_key, grid_ratio, voxel_ratio, off_coeffs):
     return signed_hausdorff
 
 shape_dict = {'tri0'   : (3, 0),
-              'tri90'  : (3, 90),
               'quad0'  : (4, 0),
               'quad45' : (4, 45),
               'pent0'  : (5, 0),
-              'hex0'   : (6, 0),
               'triac0': (30, 0)}
 # technically 30 sided is triacontagon, tridecagon is 13
 shape_data = list(shape_dict.keys())
-grid_ratio = [2, 4, 8, 16, 32, 64] #[64, 32, 16, 8, 4, 2]
-voxel_ratio = [2, 4, 8, 16, 32, 64] #[64, 32, 16, 8, 4, 2, 1]
-s_name = 'triac0'
+grid_ratio = [2, 4] #, 8, 16, 32, 64] #[64, 32, 16, 8, 4, 2]
+voxel_ratio = [2, 4, 8] #, 16, 32, 64] #[64, 32, 16, 8, 4, 2, 1]
+s_name = 'quad0'
 
 def violin_settings(v_plot, hue):
     for box in v_plot['bodies']:
@@ -1201,8 +1199,9 @@ for vr in voxel_ratio:
         plt.xticks(xs, grid_ratio)
         plt.title(s_name + ' haus vr {:d}'.format(vr))
         plt.xlabel('Circumradius / Cell Length')
-        plt.ylabel('Hausdorff Distance / Cell Length')
+        plt.ylabel('Normalized Hausdorff Distance')
         plt.xlim(g_xlo, g_xhi)
+        plt.ylim(-5, 2)
 
 
 # plt.figure()
@@ -1233,7 +1232,7 @@ for i in range(len(old_out_border)):
     plt.plot(xs, 100*vox_area*(np.array(new_out_border[i]) + new_in_border[i])/p_area, color=bn_colors[i], linestyle='dashed', label=str(vr) + ' VR New', marker='x')
 xs = np.linspace(0, len(grid_ratio), len(grid_ratio), endpoint=False)
 plt.xticks(xs, grid_ratio)
-plt.xlabel('Circumradius / Circumradius')
+plt.xlabel('Circumradius / Cell Length')
 plt.ylabel('Percent Polygon Area Bad Border')
 plt.grid()
 plt.legend()
