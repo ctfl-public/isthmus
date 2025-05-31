@@ -91,6 +91,12 @@ class Polygon:
             vertices.append([radius*np.cos(theta), radius*np.sin(theta)])
         return cls.point_polygon(vertices)
 
+    def get_perim(self):
+        perim = 0
+        for line in self.sides:
+            perim += np.linalg.norm(line.b - line.a)
+        return perim
+
     # shoelace formula for 2D area of polygon
     def get_polygon_area(self):
         max_y_mag = max(abs(self.xlo[1]), abs(self.xhi[1]))
@@ -123,6 +129,7 @@ class Voxel:
         self.type = -1
         self.weight = 0
         self.finalized = False
+        self.integrity = 0.0
 
         crns = [self.x + np.array([-1,-1])*v_size/2,
                 self.x + np.array([1,-1])*v_size/2,
@@ -141,6 +148,7 @@ class Voxel:
     def binary_fill(self):
         self.weight = 1 # smoothed volume weight
         self.type = 0
+        self.integrity = 1.0
 
     def plot(self, cl):
         xc = self.x[0]
@@ -150,6 +158,10 @@ class Voxel:
         ys = [yc - hv, yc - hv, yc + hv, yc + hv, yc - hv]
         plt.plot(xs, ys, color=cl)
 
+class BareVox:
+    def __init__(self, x, integ):
+        self.x = x
+        self.integrity = integ
 
 class Voxel_Face:
     def __init__(self, tipo, x1, x2):
@@ -562,7 +574,7 @@ class Corner:
 class Grid:
     vox_ratio = 0
     grid_ratio = 0
-    def __init__(self, polygon, origin, ncells, cell_len, vox_ratio, grid_ratio, scale_flag=False):
+    def __init__(self, polygon, origin, ncells, cell_len, vox_ratio, grid_ratio, scale_flag=True):
         Grid.vox_ratio = vox_ratio
         Grid.grid_ratio = grid_ratio
         self.scale_flag = scale_flag
@@ -572,6 +584,8 @@ class Grid:
         self.cell_len = cell_len
         self.nvox = 0
         self.mc_surf = []
+
+        self.polygon_perim = polygon.get_perim()
 
         # possible x and y coordinates of corners in grid
         self.ylines = []
@@ -607,16 +621,6 @@ class Grid:
                         for ni in range(i - nnlim, i + nnlim + 1):
                             if ni > -1 and ni < len(self.cell_grid[j]):
                                 c_cell.neighbors.append(self.cell_grid[nj][ni])
-
-        #     s_thresh = vox.type + 2 if vox.type < 0 else vox.type - 2
-        #     if i > 0 and j > 0 and self.vox_grid[j - 1][i - 1].type == s_thresh:
-        #         sl_scale = True
-        #     if i < len(self.vox_grid[j]) - 1 and j > 0 and self.vox_grid[j - 1][i + 1].type == s_thresh:
-        #         sl_scale = True
-        #     if i < len(self.vox_grid[j]) - 1 and j < len(self.vox_grid) - 1 and self.vox_grid[j + 1][i + 1].type == s_thresh:
-        #         sl_scale = True
-        #     if i > 0 and j < len(self.vox_grid) - 1 and self.vox_grid[j + 1][i - 1].type == s_thresh:
-        #         sl_scale = True
 
     def create_voxels(self, voxel_ratio):
         voxel_ratio = int(voxel_ratio)
@@ -655,10 +659,12 @@ class Grid:
                                 self.nvox += 1
                             c_cell.add_voxel(c_vox)
 
-        # set voxel weights to something other than 0 or 1
+
+    def weight_voxels(self, vr):
+        # set voxel weights to something other than 0 or -1
         level = 0
-        w_max = np.ceil((3*voxel_ratio/2) - 0.5)
-        w_min = np.floor(-(3*voxel_ratio/2) - 0.5)
+        w_max = np.ceil((3*vr/2) - 0.5)
+        w_min = np.floor(-(3*vr/2) - 0.5)
         while level <= w_max or (-level - 1) >= w_min:
             t1 = level
             t2 = -level - 1
@@ -703,39 +709,24 @@ class Grid:
             level += 1
             assert(level < 1000)
 
-        t1 = level
-        t2 = -level - 1
-        for j in range(1, len(self.vox_grid) - 1):
-            for i in range(1, len(self.vox_grid[j]) - 1):
+
+        # set weights and find exposed faces
+        for j in range(len(self.vox_grid)):
+            for i in range(len(self.vox_grid[j])):
                 vox = self.vox_grid[j][i]
-                if vox.finalized == False:
-                    vox.finalized = True
-
-
-        if self.scale_flag:
-            for j in range(len(self.vox_grid)):
-                for i in range(len(self.vox_grid[j])):
-                    vox = self.vox_grid[j][i]
-                    dvox = (0.5 + vox.type)
-                    # if self.new_baba:
-                    #     sl_scale = False
-                    #     s_thresh = vox.type + 2 if vox.type < 0 else vox.type - 2
-                    #     if i > 0 and j > 0 and self.vox_grid[j - 1][i - 1].type == s_thresh:
-                    #         sl_scale = True
-                    #     if i < len(self.vox_grid[j]) - 1 and j > 0 and self.vox_grid[j - 1][i + 1].type == s_thresh:
-                    #         sl_scale = True
-                    #     if i < len(self.vox_grid[j]) - 1 and j < len(self.vox_grid) - 1 and self.vox_grid[j + 1][i + 1].type == s_thresh:
-                    #         sl_scale = True
-                    #     if i > 0 and j < len(self.vox_grid) - 1 and self.vox_grid[j + 1][i - 1].type == s_thresh:
-                    #         sl_scale = True
-                        
-                    #     if sl_scale:
-                    #         dvox /= np.sqrt(2)
-                    vox.weight = 0.5*(1 + dvox*(2/(3*voxel_ratio)))
-                    vox.weight = min(vox.weight, 1.0)
-                    vox.weight = max(0.0, vox.weight)
-
-
+                dvox = (0.5 + vox.type)
+                vox.weight = 0.5*(1 + dvox*(2/(3*vr)))
+                vox.weight = min(vox.weight, 1.0)
+                vox.weight = max(0.0, vox.weight)
+                if vox.type == 0:
+                    if i == 0 or self.vox_grid[j][i - 1].type < 0:
+                        vox.faces[0].exposed = True
+                    if i == len(self.vox_grid[j]) - 1 or self.vox_grid[j][i + 1].type < 0:
+                        vox.faces[1].exposed = True
+                    if j == 0 or self.vox_grid[j - 1][i].type < 0:
+                        vox.faces[2].exposed = True
+                    if j == len(self.vox_grid) - 1 or self.vox_grid[j + 1][i].type < 0:
+                        vox.faces[3].exposed = True
 
         # fill corners of cells with voxel mass
         for j in range(len(self.cell_grid)):
@@ -763,29 +754,16 @@ class Grid:
         for j in range(len(self.corners)):
             for i in range(len(self.corners[j])):
                 c_corn = self.corners[j][i]
-                c_corn.frac /= voxel_ratio**2 # scale area relative to cell
+                c_corn.frac /= vr**2 # scale area relative to cell
                 if c_corn.frac > 0.499:
                     c_corn.inside = 1
                 else:
                     c_corn.inside = 0
 
-
-        # for found surface voxels, determine which faces are exposed
-        for j in range(len(self.vox_grid)):
-            for i in range(len(self.vox_grid[j])):
-                vox = self.vox_grid[j][i]
-                if vox.type == 0:
-                    if i == 0 or self.vox_grid[j][i - 1].type < 0:
-                        vox.faces[0].exposed = True
-                    if i == len(self.vox_grid[j]) - 1 or self.vox_grid[j][i + 1].type < 0:
-                        vox.faces[1].exposed = True
-                    if j == 0 or self.vox_grid[j - 1][i].type < 0:
-                        vox.faces[2].exposed = True
-                    if j == len(self.vox_grid) - 1 or self.vox_grid[j + 1][i].type < 0:
-                        vox.faces[3].exposed = True
-
     # associate each triangle to voxels based on inward normal view of voxel faces
-    def voxels_to_surfaces(self):        
+    def voxels_to_surfaces(self):
+        total_surf_len = 0
+        total_vox_len = 0
         # first assign voxels to each triangle in each cell
         for j in range(len(self.cell_grid)):
             for i in range(len(self.cell_grid[j])):
@@ -803,6 +781,7 @@ class Grid:
                         v_refs = []      # voxel ids 
                         v_areas = []    # intersected area
                         t_area = np.linalg.norm(t.b - t.a) # triangle area
+                        total_surf_len += t_area
                         ntheta = t.theta - np.pi/2 # outward normal angle
                         t_norm = np.array([np.cos(ntheta), np.sin(ntheta)])
                         for vox in c_voxels:
@@ -813,6 +792,7 @@ class Grid:
                                     # start here
                                     #area = np.random.random()*t_area # find area of overlap between projected face and triangle
                                     area = get_intersection_area(proj_f, t)
+                                    total_vox_len += area
                                     vox.proj_surfaces.append(t)
                                     vox.proj_surfaces = list(set(vox.proj_surfaces)) # prevent duplicates in list
                                     vox.proj_area += area
@@ -828,6 +808,8 @@ class Grid:
                                 if (v_areas[i] > t_area*1e-6):  #### need to be changed according voxel resolution
                                     t.vox_refs.append(v_refs[i])
                                     t.vox_fracs.append(v_areas[i])
+
+        print('Projected vs. Surf Perimeter Error: {:.2f} %'.format(100*(total_vox_len - total_surf_len)/(total_surf_len)))
 
         # now normalize scalar fractions by total voxel face area intercepted by the triangle
         low_area = 0
@@ -849,14 +831,17 @@ class Grid:
     def apply_scalars(self, theta_fn):
         plt.figure()
         all_thetas = np.linspace(-np.pi, np.pi, 100)
-        analytical = theta_fn(all_thetas)
+        analytical = theta_fn(all_thetas) + 2
         plt.plot(all_thetas*180/np.pi, analytical, color='black', label='Analytical')
 
         surf_pts = []
+        total_tri_scalar = 0
+        total_vox_scalar = 0
         for surf in self.mc_surf:
             centroid = (surf.b + surf.a)/2
             theta = np.arctan2(centroid[1], centroid[0])
-            surf.scalar = theta_fn(theta)*surf.length
+            surf.scalar = (theta_fn(theta) + 2)*surf.length
+            total_tri_scalar += surf.scalar
             surf_pts.append([theta, surf.scalar/surf.length])
             for i in range(len(surf.vox_refs)):
                 vox = surf.vox_refs[i]
@@ -870,6 +855,7 @@ class Grid:
         for j in range(len(self.vox_grid)):
             for i in range(len(self.vox_grid[j])):
                 vox = self.vox_grid[j][i]
+                total_vox_scalar += vox.scalar
                 if vox.type == 0:
                     theta = np.arctan2(vox.x[1], vox.x[0])
                     nexp = sum([f.exposed for f in vox.faces])
@@ -887,6 +873,9 @@ class Grid:
                             print('ERROR: too many exposed faces')
                             exit(1)
 
+        print('Vox vs. Surface Total Scalar Error: {:.2f} %'.format(100*(total_vox_scalar - total_tri_scalar)/(total_tri_scalar)))
+
+
         if len(vox_guess):
             transvox_guess = np.transpose(vox_guess)
             plt.scatter(transvox_guess[0]*180/np.pi, transvox_guess[1], color='blue', marker='v', label='Voxel Proj 1')
@@ -903,7 +892,35 @@ class Grid:
         plt.xlim(-200, 200)
         plt.title('vr ' + str(self.vox_ratio))
 
+    def ablate(self, v_rate):
+        total_tri_scalar = 0
+        total_vox_scalar = 0
+        # apply mass (area) loss to each voxel
+        for surf in self.mc_surf:
+            surf.scalar = v_rate*surf.length
+            total_tri_scalar += surf.scalar
+            for i in range(len(surf.vox_refs)):
+                vox = surf.vox_refs[i]
+                vox.scalar += surf.scalar*surf.vox_fracs[i]
+
+        for j in range(len(self.vox_grid)):
+            for i in range(len(self.vox_grid[j])):
+                vox = self.vox_grid[j][i]
+                if vox.type == 0:
+                    vox.integrity -= vox.scalar/(vox.size**2)
+                    if vox.integrity > 0:
+                        total_vox_scalar += vox.scalar
+                    else:
+                        vox.type = -1
+                        self.nvox -= 1
+                        total_vox_scalar += vox.scalar + vox.integrity*(vox.size**2)
+                        vox.integrity = 0
+        
+        print('Vox vs. Surface Total Scalar Error: {:.2f} %'.format(100*(total_vox_scalar - total_tri_scalar)/(total_tri_scalar)))
+
+
     def simple_ms_surface(self):
+        ms_perim = 0
         for j in range(len(self.cell_grid)):
             for i in range(len(self.cell_grid[j])):
                 c_cell = self.cell_grid[j][i]
@@ -913,16 +930,49 @@ class Grid:
                     c_cell.interpolate()
                     for bd in c_cell.borders:
                         self.mc_surf.append(bd)
+                        ms_perim += np.linalg.norm(bd.b - bd.a)
+        print('Surf vs. Analytical Perimeter Error: {:.2f} %'.format(100*(ms_perim - self.polygon_perim)/(self.polygon_perim)))
+
+
+    def save_voxs(self):
+        c_voxs = []
+        for j in range(len(self.vox_grid)):
+            for i in range(len(self.vox_grid[j])):
+                vox = self.vox_grid[j][i]
+                if vox.type >= 0:
+                    c_voxs.append(BareVox(vox.x, vox.integrity))
+        return c_voxs
+    
+    def save_surf(self):
+        return copy.deepcopy(self.mc_surf)
+
+    def reset(self):
+        for j in range(len(self.vox_grid)):
+            for i in range(len(self.vox_grid[j])):
+                vox = self.vox_grid[j][i]
+                vox.finalized = False
+                vox.scalar = 0
+                if vox.type < 0:
+                    vox.type = -1
+                else:
+                    vox.type = 0
+                for k in range(4):
+                    vox.faces[k].exposed = False
+        
+        for j in range(len(self.corners)):
+            for i in range(len(self.corners[j])):
+                self.corners[j][i].frac = 0
+        for j in range(len(self.cell_grid)):
+            for i in range(len(self.cell_grid[j])):
+                self.cell_grid[j][i].borders = []
+        self.mc_surf.clear()
+        BorderData.clear()
 
     def plot_ms_surface(self):
-        if self.scale_flag:
-            hue = 'pink'
-        else:
-            hue = 'blue'
         for j in range(len(self.cell_grid)):
             for i in range(len(self.cell_grid[j])):
                 for ccb in self.cell_grid[j][i].borders:
-                    ccb.plot(hue)
+                    ccb.plot('green')
 
     def plot_cells(self):
         for cl in range(len(self.cell_grid)):
@@ -934,6 +984,8 @@ class Grid:
             for v in vl:
                 if v.type == 0:
                     v.plot('black')
+                elif v.type > 0:
+                    v.plot('gray')
 
 # get length of the intersection of two line segments
 def get_intersection_area(base, proj):
@@ -1010,140 +1062,127 @@ def get_dt(t0):
 def plot_geometry(grid, polygon):
     plt.figure()
     plt.gca().set_aspect('equal')
-    polygon.plot('purple')
-    grid.plot_cells()
+    polygon.plot('red')
+    # grid.plot_cells()
     grid.plot_voxels()
     grid.plot_ms_surface()
+    plt.grid()
+    lbs = np.linspace(-2, 2, 5).astype(int)
+    plt.xticks(ticks=lbs, labels=lbs)
+    plt.yticks(ticks=lbs, labels=lbs)
+    plt.ylim(-2.5,2.5)
+    plt.xlim(-2.5,2.5)
+    plt.xlabel('x')
+    plt.ylabel('y')
 
 class BorderData:
-    bad_inside_old = []
-    bad_outside_old = []
     bad_inside_new = []
     bad_outside_new = []
 
     def clear():
-        BorderData.bad_inside_old = []
-        BorderData.bad_outside_old = []
         BorderData.bad_inside_new = []
         BorderData.bad_outside_new = []      
 
-def run_case(shape_key, grid_ratio, voxel_ratio, off_coeffs):
+def run_case(shape_key, grid_ratio, voxel_ratio):
     circumradius = 2
-    signed_hausdorff = []
-    settings = [False, True]
-
     
-    for x in settings:
-        print('GR: {:d}, VR: {:d}:'.format(grid_ratio, voxel_ratio))
-        t0 = time.time()
+    print('GR: {:d}, VR: {:d}:'.format(grid_ratio, voxel_ratio))
+    t0 = time.time()
 
-        shape = shape_dict[shape_key]
-        polygon = Polygon.regular_polygon(circumradius, shape[0], shape[1])
+    shape = shape_dict[shape_key]
+    polygon = Polygon.regular_polygon(circumradius, shape[0], shape[1])
 
-        l_c = circumradius/grid_ratio
-        ncr = (int(1.2*circumradius/l_c + 1)*np.ones(2)).astype(int)
-        offset = off_coeffs*l_c
-        origin = -ncr*l_c + offset
-        ncells = 2*ncr
+    l_c = circumradius/grid_ratio
+    ncr = (int(1.2*circumradius/l_c + 1)*np.ones(2)).astype(int)
+    origin = -ncr*l_c
+    ncells = 2*ncr
 
-        grid = Grid(polygon, origin, ncells, l_c, voxel_ratio, grid_ratio, scale_flag=x)
+    grid = Grid(polygon, origin, ncells, l_c, voxel_ratio, grid_ratio)
 
-        # create voxelized surface from polygon
-        grid.create_voxels(voxel_ratio/grid_ratio)
+    # create voxelized surface from polygon
+    grid.create_voxels(voxel_ratio/grid_ratio)
+    grid.weight_voxels()
 
-        # get a (simplified) marching squares surface from voxel grid
-        grid.simple_ms_surface()
+    # get a (simplified) marching squares surface from voxel grid
+    grid.simple_ms_surface()
 
-        # divide voxels among surface elements
-        grid.voxels_to_surfaces()
+    # divide voxels among surface elements
+    grid.voxels_to_surfaces()
 
-        #grid.apply_scalars(np.cos)
-        #plot_geometry(grid, polygon)
-
-
-        # find all voxels outside of MS generated surface
-        # assume shape is not so weird that it slides in between voxels, so layer by layer works
-        done = False
-        it = 0
-        nbvox = 0
-        out_bvox = 0
-        csd = []
-        vox_flat = grid.vox_grid.flatten()
-        while done == False and it < 300:
-            vox_layer = [vox for vox in vox_flat if vox.type == it]
-            layer_out_bvox = 0
-            for vox in vox_layer:
-                dist, norm = polygon_hausdorff_distance(grid.mc_surf, vox.x)
-                if it == 0:
-                    csd.append(dist)
-                    nbvox += 1
-                if dist < 0:
-                    layer_out_bvox += 1
-            out_bvox += layer_out_bvox
-            it += 1
-            if layer_out_bvox == 0:
-                done = True
-
-        # c_cell = grid.cell_grid[j][i]
-        # borders = [c_bord for neighbor in c_cell.neighbors for c_bord in neighbor.borders]
-        # edgee = np.array([v.type == 0 for v in c_cell.voxels])
-        # if len(borders) < 1 and any(edgee):
-        #     print('NO BORDERS')
+    grid.apply_scalars(np.cos)
+    plot_geometry(grid, polygon)
 
 
-        signed_hausdorff.append(np.array(csd)/circumradius)
-        print('Percent border voxels outside: {:.2f} %'.format(100*out_bvox/nbvox))
-        print()
-        # if x == True:
-        #     BorderData.bad_outside_new.append(100*out_bvox/nbvox)
-        # else:
-        #     BorderData.bad_outside_old.append(100*out_bvox/nbvox)
-        if x == True:
-            BorderData.bad_outside_new.append(out_bvox)
-        else:
-            BorderData.bad_outside_old.append(out_bvox)
-        
-        # find all non-voxels inside of MS generated surface
-        done = False
-        it = -1
-        in_bvox = 0
-        while done == False and abs(it) < 300:
-            vox_layer = [vox for vox in vox_flat if vox.type == it]
-            layer_in_bvox = 0
-            for vox in vox_layer:
-                dist, norm = polygon_hausdorff_distance(grid.mc_surf, vox.x)
-                if dist > 0:
-                    layer_in_bvox += 1
-            in_bvox += layer_in_bvox
-            it -= 1
-            if layer_in_bvox == 0:
-                done = True
+    # find all voxels outside of MS generated surface
+    # assume shape is not so weird that it slides in between voxels, so layer by layer works
+    done = False
+    it = 0
+    nbvox = 0
+    out_bvox = 0
+    csd = []
+    vox_flat = grid.vox_grid.flatten()
+    while done == False and it < 300:
+        vox_layer = [vox for vox in vox_flat if vox.type == it]
+        layer_out_bvox = 0
+        for vox in vox_layer:
+            dist, norm = polygon_hausdorff_distance(grid.mc_surf, vox.x)
+            if it == 0:
+                csd.append(dist)
+                nbvox += 1
+            if dist < 0:
+                layer_out_bvox += 1
+        out_bvox += layer_out_bvox
+        it += 1
+        if layer_out_bvox == 0:
+            done = True
 
-        print('Percent border voxels inside: {:.2f} %'.format(100*in_bvox/nbvox))
-        print()
-        if x == True:
-            BorderData.bad_inside_new.append(100*in_bvox/nbvox)
-        else:
-            BorderData.bad_inside_old.append(100*in_bvox/nbvox)
+    signed_hausdorff = np.array(csd)/circumradius
+    BorderData.bad_outside_new.append(100*out_bvox/nbvox)
+    
+    # find all non-voxels inside of MS generated surface
+    done = False
+    it = -1
+    in_bvox = 0
+    while done == False and abs(it) < 300:
+        vox_layer = [vox for vox in vox_flat if vox.type == it]
+        layer_in_bvox = 0
+        for vox in vox_layer:
+            dist, norm = polygon_hausdorff_distance(grid.mc_surf, vox.x)
+            if dist > 0:
+                layer_in_bvox += 1
+        in_bvox += layer_in_bvox
+        it -= 1
+        if layer_in_bvox == 0:
+            done = True
 
-        tf = time.time() - t0
-        tsc = 1000*tf/(len(grid.cell_grid)*len(grid.cell_grid[0]))
-        print('\tTime for case: {:.2f} s ({:.2f} ms per cell)'.format(tf, tsc))
-        print('Min: {:.2f} Max: {:.2f}'.format(min(signed_hausdorff[-1]), max(signed_hausdorff[-1])))
-        print()
+    print('Percent border voxels misplaced: {:.2f} %'.format(100*(in_bvox + out_bvox)/nbvox))
+    print()
+    BorderData.bad_inside_new.append(100*in_bvox/nbvox)
+
+    tf = time.time() - t0
+    tsc = 1000*tf/(len(grid.cell_grid)*len(grid.cell_grid[0]))
+    print('\tTime for case: {:.2f} s ({:.2f} ms per cell)'.format(tf, tsc))
+    print('Min: {:.2f} Max: {:.2f}'.format(min(signed_hausdorff), max(signed_hausdorff)))
+    print()
 
     return signed_hausdorff
 
-shape_dict = {'tri0'   : (3, 0),
-              'quad0'  : (4, 0),
-              'quad45' : (4, 45),
-              'pent0'  : (5, 0),
-              'triac0': (30, 0)}
-# technically 30 sided is triacontagon, tridecagon is 13
-shape_data = list(shape_dict.keys())
-grid_ratio = [2, 4] #, 8, 16, 32, 64] #[64, 32, 16, 8, 4, 2]
-voxel_ratio = [2, 4, 8] #, 16, 32, 64] #[64, 32, 16, 8, 4, 2, 1]
-s_name = 'quad0'
+def plot_ablate(bvoxs):
+    plt.figure()
+    plt.gca().set_aspect('equal')
+    xs = []
+    ys = []
+    cs = []
+    for bv in bvoxs:
+        xs.append(bv.x[0])
+        ys.append(bv.x[1])
+        cs.append(bv.integrity)
+    scatter = plt.scatter(xs, ys, c=cs)
+    plt.colorbar(scatter, label='Integrity')
+    plt.clim(0,1)
+    plt.grid()
+    plt.xlim(-2,2)
+    plt.ylim(-2,2)
 
 def violin_settings(v_plot, hue):
     for box in v_plot['bodies']:
@@ -1154,87 +1193,135 @@ def violin_settings(v_plot, hue):
     v_plot['cmaxes'].set_color('black')
     v_plot['cbars'].set_color('black')
 
+shape_dict = {'tri0'   : (3, 0),
+              'quad0'  : (4, 0),
+              'quad45' : (4, 45),
+              'pent0'  : (5, 0),
+              'triac0': (30, 0)}
+# technically 30 sided is triacontagon, tridecagon is 13
+shape_data = list(shape_dict.keys())
+ablate = True
 
-old_out_border = []
-new_out_border = []
-old_in_border = []
-new_in_border = []
-for vr in voxel_ratio:
-    og_hdd = []
-    new_hdd = []
-    osamp = []
-    nsamp = []
-    for gr in grid_ratio:
-        if vr >= gr:
-            oc = np.array([0, 0])
-            chdd = run_case(s_name, gr, vr, oc)
-            og_hdd.append(chdd[0])
-            new_hdd.append(chdd[1])
-    old_out_border.append(BorderData.bad_outside_old)
-    new_out_border.append(BorderData.bad_outside_new)
-    old_in_border.append(BorderData.bad_inside_old)
-    new_in_border.append(BorderData.bad_inside_new)
-    BorderData.clear()
+if ablate:
+    shps = ['quad0'] #, 'quad45']
+    for s_name in shps:
+        vox_its = []
+        surf_its = []
 
-    if len(og_hdd):
-        plt.figure()
-        sfac = 2
-        diff = 0.3
-        # normalize
-        good_lim = 0.5/vr
-        newhddp = [(x - good_lim)/good_lim for x in new_hdd]
-        oldhddp = [(x - good_lim)/good_lim for x in og_hdd]
-        poss = np.linspace(0, len(og_hdd), len(og_hdd), endpoint=False)*2
-        sh0 = plt.violinplot(oldhddp, positions=poss-diff, showmedians=True)
-        violin_settings(sh0, 'red')
-        sh1 = plt.violinplot(newhddp, positions=poss+diff, showmedians=True)
-        violin_settings(sh1, 'blue')
-        g_xlo = -1
-        g_xhi = (len(grid_ratio) - 1)*sfac + 1
-        plt.plot([g_xlo, g_xhi], [-1]*2, color='black', linestyle='dashed')
-        xs = np.linspace(0, len(grid_ratio), len(grid_ratio), endpoint=False)*2
-        plt.plot([g_xlo, g_xhi], [1]*2, color='black', linestyle='dashed')
-        plt.plot([g_xlo, g_xhi], [0]*2, color='black')
-        plt.grid()
-        plt.xticks(xs, grid_ratio)
-        plt.title(s_name + ' haus vr {:d}'.format(vr))
-        plt.xlabel('Circumradius / Cell Length')
-        plt.ylabel('Normalized Hausdorff Distance')
-        plt.xlim(g_xlo, g_xhi)
-        plt.ylim(-5, 2)
+        vr = 8
+        gr = 8
+        steps = 15
+
+        circumradius = 2
+        shape = shape_dict[s_name]
+        polygon = Polygon.regular_polygon(circumradius, shape[0], shape[1])
+        l_c = circumradius/gr
+        ncr = (int(1.2*circumradius/l_c + 1)*np.ones(2)).astype(int)
+        origin = -ncr*l_c
+        ncells = 2*ncr
+
+        grid = Grid(polygon, origin, ncells, l_c, vr, gr)
+
+        # create voxelized structure from polygon
+        grid.create_voxels(vr/gr)
+
+        vox_its = []
+        surf_its = []
+        for t in range(steps):
+            # 1. generate surface from voxels
+            grid.weight_voxels(vr/gr)
+            grid.simple_ms_surface()
+            cvoxs = grid.save_voxs()
+            plot_ablate(cvoxs)
+            vox_its.append(cvoxs)
+            surf_its.append(grid.save_surf())
+
+            # 2. find surface quantities from fluid
+            # vol_rate: area removal per length of surface element per ts, or depth recession per ts
+            vol_rate = 2e-2
+
+            # 3. assign voxels to surface elements
+            grid.voxels_to_surfaces()
+
+            # 4. ablate solid
+            grid.ablate(vol_rate)
+            print('{} voxels remain\n'.format(grid.nvox))
+            if grid.nvox == 0:
+                break
+            # clear grid data for next iteration
+            grid.reset()
+
+else:
+    grid_ratio = [2, 4] #, 8, 16, 32, 64]
+    voxel_ratio = [2, 4, 8] #, 16, 32, 64]
+    s_name = 'pent0'
+    new_out_border = []
+    new_in_border = []
+    for vr in voxel_ratio:
+        new_hdd = []
+        osamp = []
+        nsamp = []
+        for gr in grid_ratio:
+            if vr >= gr:
+                new_hdd.append(run_case(s_name, gr, vr))
+        new_out_border.append(BorderData.bad_outside_new)
+        new_in_border.append(BorderData.bad_inside_new)
+        BorderData.clear()
+
+        if len(new_hdd):
+            plt.figure()
+            sfac = 2
+            # normalize
+            good_lim = 0.5/vr
+            newhddp = [(x - good_lim)/good_lim for x in new_hdd]
+            poss = np.linspace(0, len(new_hdd), len(new_hdd), endpoint=False)*2
+            sh1 = plt.violinplot(newhddp, positions=poss, showmedians=True)
+            violin_settings(sh1, 'red')
+
+            g_xlo = -1
+            g_xhi = (len(grid_ratio) - 1)*sfac + 1
+            plt.plot([g_xlo, g_xhi], [-1]*2, color='black', linestyle='dashed')
+            xs = np.linspace(0, len(grid_ratio), len(grid_ratio), endpoint=False)*2
+            plt.plot([g_xlo, g_xhi], [1]*2, color='black', linestyle='dashed')
+            plt.plot([g_xlo, g_xhi], [0]*2, color='black')
+            plt.grid()
+            plt.xticks(xs, grid_ratio)
+            plt.title(s_name + ' haus vr {:d}'.format(vr))
+            plt.xlabel('Circumradius / Cell Length')
+            plt.ylabel('Normalized Hausdorff Distance')
+            plt.xlim(g_xlo, g_xhi)
+            plt.ylim(-5, 2)
 
 
-# plt.figure()
-# bn_colors = ['blue', 'green', 'purple', 'orange', 'red', 'grey', 'black', 'brown', 'magenta', 'cyan']
-# for i in range(len(old_out_border)):
-#     xs = np.linspace(0, len(old_out_border[i]), len(old_out_border[i]), endpoint=False)
-#     vr = str(voxel_ratio[i])
-#     plt.plot(xs, np.array(old_out_border[i]) + old_in_border[i], color=bn_colors[i], label=vr + ' VR Old')
-#     plt.plot(xs, np.array(new_out_border[i]) + new_in_border[i], color=bn_colors[i], linestyle='dashed', label=vr + ' VR New')
-# xs = np.linspace(0, len(grid_ratio), len(grid_ratio), endpoint=False)
-# plt.xticks(xs, grid_ratio)
-# plt.xlabel('Circumradius / Cell Length')
-# plt.ylabel('Percent of Misplaced Border Voxels')
-# plt.grid()
-# plt.legend()
+    plt.figure()
+    bn_colors = ['blue', 'green', 'purple', 'orange', 'red', 'grey', 'black', 'brown', 'magenta', 'cyan']
+    for i in range(len(new_out_border)):
+        xs = np.linspace(0, len(new_out_border[i]), len(new_out_border[i]), endpoint=False)
+        vr = str(voxel_ratio[i])
+        plt.plot(xs, np.array(new_out_border[i]) + new_in_border[i], color=bn_colors[i], linestyle='dashed', label=vr + ' VR New')
+    xs = np.linspace(0, len(grid_ratio), len(grid_ratio), endpoint=False)
+    plt.xticks(xs, grid_ratio)
+    plt.xlabel('Circumradius / Cell Length')
+    plt.ylabel('Percent of Misplaced Border Voxels')
+    plt.grid()
+    plt.legend()
 
-shape = shape_dict[s_name]
-polygon = Polygon.regular_polygon(2, shape[0], shape[1])
-p_area = polygon.get_polygon_area()
-plt.figure()
-bn_colors = ['blue', 'green', 'purple', 'orange', 'red', 'grey', 'black', 'brown', 'magenta', 'cyan']
-for i in range(len(old_out_border)):
-    xs = np.linspace(0, len(old_out_border[i]), len(old_out_border[i]), endpoint=False)
-    vr = voxel_ratio[i]
-    # 2 is circumradius
-    vox_area = (2/vr)**2
-    plt.plot(xs, 100*vox_area*(np.array(old_out_border[i]) + old_in_border[i])/p_area, color=bn_colors[i], label=str(vr) + ' VR Old', marker='o')
-    plt.plot(xs, 100*vox_area*(np.array(new_out_border[i]) + new_in_border[i])/p_area, color=bn_colors[i], linestyle='dashed', label=str(vr) + ' VR New', marker='x')
-xs = np.linspace(0, len(grid_ratio), len(grid_ratio), endpoint=False)
-plt.xticks(xs, grid_ratio)
-plt.xlabel('Circumradius / Cell Length')
-plt.ylabel('Percent Polygon Area Bad Border')
-plt.grid()
-plt.legend()
+    shape = shape_dict[s_name]
+    polygon = Polygon.regular_polygon(2, shape[0], shape[1])
+    p_area = polygon.get_polygon_area()
+    plt.figure()
+    bn_colors = ['blue', 'green', 'purple', 'orange', 'red', 'grey', 'black', 'brown', 'magenta', 'cyan']
+    for i in range(len(new_out_border)):
+        xs = np.linspace(0, len(new_out_border[i]), len(new_out_border[i]), endpoint=False)
+        vr = voxel_ratio[i]
+        # 2 is circumradius
+        vox_area = (2/vr)**2
+        plt.plot(xs, 100*vox_area*(np.array(new_out_border[i]) + new_in_border[i])/p_area, color=bn_colors[i], label=str(vr) + ' VR New', marker='x')
+    xs = np.linspace(0, len(grid_ratio), len(grid_ratio), endpoint=False)
+    plt.xticks(xs, grid_ratio)
+    plt.xlabel('Circumradius / Cell Length')
+    plt.ylabel('Percent Polygon Area Bad Border')
+    plt.grid()
+    plt.legend()
 
 # %%
