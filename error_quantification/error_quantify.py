@@ -7,6 +7,7 @@ Ethan Huff (ya boi)
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from matplotlib.ticker import MultipleLocator
 import pandas as pd
 from scipy.spatial import ConvexHull
 import sys
@@ -14,10 +15,11 @@ import time
 import copy
 
 # %%
-
+plt.rcParams['font.size'] = 16
+fig_save = False
+glob_dpi = 100
 class Line:
     def __init__(self, endpts, locs=[]):
-        self.vertical = 0
         self.endpts = np.array(endpts) # [[x1, y1], [x2, y2]]
         self.a = self.endpts[0] # [x,y]
         self.b = self.endpts[1]
@@ -34,16 +36,6 @@ class Line:
         else:
             print('ERROR: invalid line endpoint positions')
             sys.exit(1)
-        
-        self.m = self.bi = 0
-
-        if (abs(self.theta) < 1e-4):
-            self.vertical = -1 # horizontal
-        elif (abs(abs(self.theta) - np.pi/2) < 1e-4):
-            self.vertical = 1 # vertical
-        else:
-            self.m = (self.b[1] - self.a[1])/(self.b[0] - self.a[0])
-            self.bi = self.a[1] - self.m*self.a[0]
 
         self.vox_refs = []
         self.vox_fracs = []
@@ -52,9 +44,9 @@ class Line:
     def get_ends(self):
         return self.endpts
 
-    def plot(self, clr):
+    def plot(self, clr, lst):
         ppts = np.transpose([self.a, self.b])
-        plt.plot(ppts[0], ppts[1], color=clr)
+        plt.plot(ppts[0], ppts[1], color=clr, linestyle=lst, linewidth=2)
 
 class Polygon:
     def __init__(self, vertices, lines):
@@ -118,9 +110,9 @@ class Polygon:
                 return 0
         return 1
     
-    def plot(self, color):
+    def plot(self, color, lst):
         for s in self.sides:
-            s.plot(color)
+            s.plot(color, lst)
 
 
 class Voxel:
@@ -184,7 +176,7 @@ class Voxel:
                 self.integrity = 0
         else:
             print('ERROR: invalid voxel for ablation')
-            exit(1)
+            sys.exit(1)
                 
         return ablated_mat
 
@@ -267,7 +259,7 @@ class Cell:
             Cell.grid.cell_grid[ixlo[1]][ixlo[0]] = self
         elif any(self.ncells < 1):
             print('ERROR: fatal error in cell creation')
-            exit(1)
+            sys.exit(1)
         else:
             # split the longer dimension in roughly half
             a_dim = 0 if self.ncells[0] > self.ncells[1] else 1 # x (or y)
@@ -342,7 +334,7 @@ class Cell:
                         new_lines.append(Line(clipped_line))
                     # elif len(clipped_line) == 1:
                     #     print('ERROR: failure to clip line to cell')
-                    #     exit(1)
+                    #     sys.exit(1)
 
         return Polygon.line_polygon(new_lines)
 
@@ -516,7 +508,7 @@ class Subcell:
             self.leaf.subgrid[ixlo[1]][ixlo[0]] = self
         elif any(self.nvoxs < 1):
             print('ERROR: fatal error in subcell creation')
-            exit(1)
+            sys.exit(1)
         else:
             # split the longer dimension in roughly half
             a_dim = 0 if nvoxs[0] > nvoxs[1] else 1 # x (or y)
@@ -907,24 +899,33 @@ class Grid:
                         avg_error += abs(100*(0 - analyt)/analyt)
                     else:
                         vguess = vox.scalar/vox.proj_area
+                        if vguess < 0.5 or vguess > 3.5:
+                            print('WARNING: voxel flux outside of graphing range')
                         vox_guess.append([theta, vguess])
                         avg_error += abs(100*(vguess - analyt)/analyt)
 
         avg_error /= nguess
         print('Vox vs. Surface Total Scalar Error: {:.2f} %'.format(100*(total_vox_scalar - total_tri_scalar)/(total_tri_scalar)))
 
-        # plt.figure()
-        # if len(vox_guess):
-        #     transvox_guess = np.transpose(vox_guess)
-        #     plt.scatter(transvox_guess[0]*180/np.pi, transvox_guess[1], color='blue', marker='v', label='Voxel')
-        # plt.scatter(transsurf[0]*180/np.pi, transsurf[1], color='red', marker='x', label='Surface')
-        # plt.plot(all_thetas*180/np.pi, analytical, color='black', label='Analytical')
-        # plt.legend()
-        # plt.grid()
-        # plt.xlabel('Centroid Theta')
-        # plt.ylabel('Scalar per Unit Length')
-        # plt.xlim(-200, 200)
-        # plt.title('vr ' + str(self.vox_ratio))
+        if Grid.grid_ratio == 8 and Grid.vox_ratio == 8:
+            plt.figure()
+            plt.plot(all_thetas*180/np.pi, analytical, color='black', label='Analytical', linestyle='dashed')
+            if len(vox_guess):
+                transvox_guess = np.transpose(vox_guess)
+                plt.scatter(transvox_guess[0]*180/np.pi, transvox_guess[1], color='darkviolet', marker='v', label='Voxel', zorder=3, s=50 , edgecolors='black')
+            plt.legend()
+            plt.grid()
+            plt.gca().set_aspect(90)
+            plt.xlabel('Centroid Angle [°]')
+            plt.ylabel('Scalar per Unit Length')
+            plt.xlim(-180, 180)
+            plt.ylim(0.5, 3.5)
+            xlbs = np.linspace(-180, 180, 7).astype(int)
+            ylbs = np.round(np.linspace(0.5, 3.5, 7), 2)
+            plt.xticks(ticks=xlbs, labels=xlbs)
+            plt.yticks(ticks=ylbs, labels=ylbs)
+            if fig_save:
+                plt.savefig(s_name + '_flux', dpi=glob_dpi, bbox_inches='tight')
 
         return avg_error
 
@@ -946,8 +947,16 @@ class Grid:
                     ablated_mat = vox.ablate(grid)
                     total_vox_scalar += ablated_mat
         
-        print('Vox vs. Surface Total Scalar Error: {:.2f} %'.format(100*(total_vox_scalar - total_tri_scalar)/(total_tri_scalar)))
+        c_volume = 0
+        vox_area = (self.vox_grid[0][0].size)**2
+        for j in range(len(self.vox_grid)):
+            for i in range(len(self.vox_grid[j])):
+                vox = self.vox_grid[j][i]
+                if vox.type >= 0:
+                    c_volume += vox_area*vox.integrity
 
+        print('Vox vs. Surface Total Scalar Error: {:.2f} %'.format(100*(total_vox_scalar - total_tri_scalar)/(total_tri_scalar)))
+        return c_volume
 
     def simple_ms_surface(self):
         ms_perim = 0
@@ -996,13 +1005,12 @@ class Grid:
             for i in range(len(self.cell_grid[j])):
                 self.cell_grid[j][i].borders = []
         self.mc_surf.clear()
-        BorderData.clear()
 
     def plot_ms_surface(self):
         for j in range(len(self.cell_grid)):
             for i in range(len(self.cell_grid[j])):
                 for ccb in self.cell_grid[j][i].borders:
-                    ccb.plot('green')
+                    ccb.plot('green', 'solid')
 
     def plot_cells(self):
         for cl in range(len(self.cell_grid)):
@@ -1012,10 +1020,8 @@ class Grid:
     def plot_voxels(self):
         for vl in self.vox_grid:
             for v in vl:
-                if v.type == 0:
+                if v.type >= 0:
                     v.plot('black')
-                elif v.type > 0:
-                    v.plot('gray')
 
 # get length of the intersection of two line segments
 def get_intersection_area(base, proj):
@@ -1092,26 +1098,22 @@ def get_dt(t0):
 def plot_geometry(grid, polygon):
     plt.figure()
     plt.gca().set_aspect('equal')
-    polygon.plot('red')
+    polygon.plot('red', 'dotted')
     # grid.plot_cells()
     grid.plot_voxels()
     grid.plot_ms_surface()
     plt.grid()
-    lbs = np.linspace(-2, 2, 5).astype(int)
+    lbs = np.round(np.linspace(-2.5, 2.5, 6), 1)
     plt.xticks(ticks=lbs, labels=lbs)
     plt.yticks(ticks=lbs, labels=lbs)
+    plt.gca().xaxis.set_minor_locator(MultipleLocator(0.25))
+    plt.gca().yaxis.set_minor_locator(MultipleLocator(0.25))
+    plt.grid(visible=True, which='minor')
     plt.ylim(-2.5,2.5)
     plt.xlim(-2.5,2.5)
-    plt.xlabel('x')
-    plt.ylabel('y')
+    if fig_save:
+        plt.savefig(s_name + '_geom', dpi=glob_dpi, bbox_inches='tight')
 
-class BorderData:
-    bad_inside_new = []
-    bad_outside_new = []
-
-    def clear():
-        BorderData.bad_inside_new = []
-        BorderData.bad_outside_new = []      
 
 def run_case(shape_key, grid_ratio, voxel_ratio):
     circumradius = 2
@@ -1140,7 +1142,8 @@ def run_case(shape_key, grid_ratio, voxel_ratio):
     grid.voxels_to_surfaces()
 
     flux_error = grid.apply_scalars(np.cos)
-    # plot_geometry(grid, polygon)
+    if grid_ratio == 8 and voxel_ratio == 8:
+        plot_geometry(grid, polygon)
 
 
     # find all voxels outside of MS generated surface
@@ -1167,7 +1170,6 @@ def run_case(shape_key, grid_ratio, voxel_ratio):
             done = True
 
     signed_hausdorff = np.array(csd)/circumradius
-    BorderData.bad_outside_new.append(100*out_bvox/nbvox)
     
     # find all non-voxels inside of MS generated surface
     done = False
@@ -1178,7 +1180,7 @@ def run_case(shape_key, grid_ratio, voxel_ratio):
         layer_in_bvox = 0
         for vox in vox_layer:
             dist, norm = polygon_hausdorff_distance(grid.mc_surf, vox.x)
-            if dist > 0:
+            if dist >= 0:
                 layer_in_bvox += 1
         in_bvox += layer_in_bvox
         it -= 1
@@ -1191,7 +1193,6 @@ def run_case(shape_key, grid_ratio, voxel_ratio):
 
     print('Percent border voxels misplaced: {:.2f} %'.format(100*(in_bvox + out_bvox)/nbvox))
     print()
-    BorderData.bad_inside_new.append(100*in_bvox/nbvox)
 
     tf = time.time() - t0
     tsc = 1000*tf/(len(grid.cell_grid)*len(grid.cell_grid[0]))
@@ -1202,6 +1203,8 @@ def run_case(shape_key, grid_ratio, voxel_ratio):
     return signed_hausdorff, surf_error, flux_error
 
 def plot_ablate(bvoxs, grid):
+    global pabl
+    plt.rcParams['font.size'] = 20
     plt.figure()
     plt.gca().set_aspect('equal')
     xs = []
@@ -1213,13 +1216,19 @@ def plot_ablate(bvoxs, grid):
         cs.append(bv.integrity)
     sz = (50*grid.vox_grid[0][0].size)**2
     scatter = plt.scatter(xs, ys, c=cs, cmap='turbo_r', marker='s', s=sz)
+    grid.plot_ms_surface()
     plt.colorbar(scatter, label='Integrity')
     plt.clim(0,1)
-    plt.grid()
-    plt.xlim(-2,2)
-    plt.ylim(-2,2)
-    plt.xlabel('x')
-    plt.ylabel('y')
+    plt.xlim(-2.1,2.1)
+    plt.ylim(-2.1,2.1)
+    tck = [-2,-1,0,1,2]
+    plt.xticks(ticks=tck, labels=tck)
+    plt.yticks(ticks=tck, labels=tck)
+    if fig_save:
+        plt.savefig(s_name + '_ablate_' + str(pabl), dpi=glob_dpi, bbox_inches='tight')
+    pabl += 1
+    plt.rcParams['font.size'] = 16
+
 
 def violin_settings(v_plot, hue, grid_ratio):
     for box in v_plot['bodies']:
@@ -1244,11 +1253,16 @@ def violin_settings(v_plot, hue, grid_ratio):
     plt.ylim(-5, 2)
 
 
-def plot_heat(data, lbl, grid_ratio, voxel_ratio):
+def plot_heat(data, lbl, grid_ratio, voxel_ratio, tp):
     fig, ax = plt.subplots()
-    clmap = mpl.colormaps.get_cmap('jet')
+    clmap = mpl.colormaps.get_cmap('plasma')
     clmap.set_bad(color='black')
-    im = ax.imshow(data, cmap=clmap, origin='lower', vmin=0, vmax=round(max(data.flatten()) + 5.1, -1))
+    cont_max = 16
+    cont_min = -1e-12
+    if max(data.flatten()) > cont_max or min(data.flatten()) < cont_min:
+        print('ERROR: data exceeds contour limit')
+        sys.exit(1)
+    im = ax.imshow(data, cmap=clmap, origin='lower', vmin=round(cont_min), vmax=cont_max)
 
     ax.set_xticks(range(len(grid_ratio)), labels=grid_ratio)
     ax.set_xlabel('Grid Ratio')
@@ -1258,6 +1272,16 @@ def plot_heat(data, lbl, grid_ratio, voxel_ratio):
     fig.colorbar(im, label=lbl)
     fig.tight_layout()
 
+    # Loop over data dimensions and create text annotations.
+    for j in range(len(voxel_ratio)):
+        for i in range(len(grid_ratio)):
+            if j >= i:
+                ax.text(i, j, round(data[j][i], 1), ha="center", va="center", color="w")
+
+    if fig_save:
+        fig.savefig(s_name + '_heatmap_' + tp, dpi=glob_dpi, bbox_inches='tight')
+
+
 shape_dict = {'tri0'   : (3, 0),
               'quad0'  : (4, 0),
               'quad45' : (4, 45),
@@ -1265,7 +1289,11 @@ shape_dict = {'tri0'   : (3, 0),
               'triac0': (30, 0)}
 # technically 30 sided is triacontagon, tridecagon is 13
 shape_data = list(shape_dict.keys())
+pabl = 0
+
 ablate = True
+fig_save = True
+glob_dpi = 200
 
 if ablate:
     shps = ['quad45'] #, 'quad45']
@@ -1273,9 +1301,10 @@ if ablate:
         vox_its = []
         surf_its = []
 
-        vr = 8
-        gr = 8
-        steps = 15
+        vr = 16
+        gr = 16
+        # for 16x16 ratios, 30 for visuals, 50 for full ablation
+        steps = 50
 
         circumradius = 2
         shape = shape_dict[s_name]
@@ -1289,36 +1318,72 @@ if ablate:
 
         # create voxelized structure from polygon
         grid.create_voxels(vr/gr)
-
+        vol0 = grid.nvox*(grid.vox_grid[0][0].size)**2
+        d0 = np.sqrt(vol0)/2
+        act_vols = [1]
         vox_its = []
         surf_its = []
+        sim_end = 0
         for t in range(steps):
+            print('t = {}'.format(t))
             # 1. generate surface from voxels
             grid.weight_voxels(vr/gr)
             grid.simple_ms_surface()
             cvoxs = grid.save_voxs()
-            plot_ablate(cvoxs, grid)
+            if t == 1 - 1  or t == 20 - 1 or t == 40 - 1:
+                plot_ablate(cvoxs, grid)
             vox_its.append(cvoxs)
             surf_its.append(grid.save_surf())
 
             # 2. find surface quantities from fluid
             # vol_rate: area removal per length of surface element per ts, or depth recession per ts
-            vol_rate = 4e-2
+            vol_rate = 0.25*grid.vox_grid[0][0].size
 
             # 3. assign voxels to surface elements
             grid.voxels_to_surfaces()
 
             # 4. ablate solid
-            grid.ablate(vol_rate)
+            c_vol = grid.ablate(vol_rate)
             print('{} voxels remain\n'.format(grid.nvox))
+            act_vols.append(c_vol/vol0)
             if grid.nvox == 0:
+                sim_end = t + 1
                 break
             # clear grid data for next iteration
             grid.reset()
 
+        true_vols = [1]
+        for t in range(steps):
+            # ablation in the step here...
+
+            analytical_d = d0 - vol_rate*(t + 1)
+            if analytical_d > 0:
+                true_vols.append(((2*analytical_d)**2)/vol0)
+            else:
+                true_vols.append(-((2*analytical_d)**2)/vol0)
+
+        # number of timesteps COMPLETED
+        true_end = d0/vol_rate
+        print('END TIME ERROR: {:.2f} %'.format(100*(sim_end - true_end)/true_end))
+        print('Fraction of true vol remaining at sim end: {:.5f}'.format(true_vols[sim_end]))
+
+        plt.figure()
+        xts = np.linspace(0, len(act_vols) - 1, len(act_vols))
+        plt.plot(xts, act_vols, label='Simulated', color='red')
+        xts = np.linspace(0, len(true_vols) - 1, len(true_vols))
+        plt.plot(xts, true_vols, label='True', color='black', linestyle='dashed')
+        plt.ylabel('Remaining Volume Fraction')
+        plt.xlabel('Iteration')
+        plt.ylim(0, 1)
+        plt.xlim(0, 50)
+        plt.grid()
+        plt.legend()
+        if fig_save:
+            plt.savefig(s_name + '_volfrac', dpi=glob_dpi, bbox_inches='tight')
+
 else:
-    grid_ratio = [2, 4, 8, 16, 32]
-    voxel_ratio = [2, 4, 8, 16, 32]
+    grid_ratio = [2, 4, 8]
+    voxel_ratio = [2, 4, 8]
     s_name = 'pent0'
 
     new_out_border = []
@@ -1326,13 +1391,11 @@ else:
     voxfl = []
     bvox = []
     for vr in voxel_ratio:
-        new_hdd = []
         cvoxfl = []
         cbvox = []
         for gr in grid_ratio:
             if vr >= gr:
                 s_haus, bord_error, flux_error = run_case(s_name, gr, vr)
-                new_hdd.append(s_haus)
                 cvoxfl.append(flux_error)
                 cbvox.append(bord_error)
             else:
@@ -1340,39 +1403,9 @@ else:
                 cbvox.append(np.nan)
         voxfl.append(cvoxfl)
         bvox.append(cbvox)
-        new_out_border.append(BorderData.bad_outside_new)
-        new_in_border.append(BorderData.bad_inside_new)
-        BorderData.clear()
 
-        if len(new_hdd):
-            plt.figure()
-            # normalize
-            good_lim = 0.5/vr
-            newhddp = [(x - good_lim)/good_lim for x in new_hdd]
-            poss = np.linspace(0, len(new_hdd), len(new_hdd), endpoint=False)*2
-            sh1 = plt.violinplot(newhddp, positions=poss, showmedians=True)
-            violin_settings(sh1, 'red', grid_ratio)
-
-    plot_heat(np.array(bvox), 'Percent Error in Voxel Capture', grid_ratio, voxel_ratio)
-    plot_heat(np.array(voxfl), 'Percent Error in Voxel Flux', grid_ratio, voxel_ratio)
-
-    fig, ax1 = plt.subplots()
-    bn_colors = ['blue', 'green', 'purple', 'orange', 'red', 'grey', 'black', 'brown', 'magenta', 'cyan']
-    shape = shape_dict[s_name]
-    polygon = Polygon.regular_polygon(2, shape[0], shape[1])
-    p_area = polygon.get_polygon_area()
-    for i in range(len(new_out_border)):
-        xs = np.linspace(0, len(new_out_border[i]), len(new_out_border[i]), endpoint=False)
-        vr = voxel_ratio[i]
-        vox_area = (2/vr)**2 # 2 is circumradius
-        ax1.plot(xs, np.array(new_out_border[i]) + new_in_border[i], color=bn_colors[i], linestyle='dashed', label=str(vr) + ' VR by Nvox', marker='o')
-        ax1.plot(xs, 100*vox_area*(np.array(new_out_border[i]) + new_in_border[i])/p_area, color=bn_colors[i], label=str(vr) + ' VR by Area', marker='x')
-    xls = np.linspace(0, len(grid_ratio), len(grid_ratio), endpoint=False)
-    ax1.set_xticks(xls, grid_ratio)
-    ax1.set_xlabel('Circumradius / Cell Length')
-    ax1.set_ylabel('Percent Bad')
-    ax1.grid()
-    ax1.legend()
+    plot_heat(np.array(bvox), 'Percent Error of Surface', grid_ratio, voxel_ratio, 'surf')
+    plot_heat(np.array(voxfl), 'Percent Error of Flux', grid_ratio, voxel_ratio, 'flux')
 
 
 # %%
