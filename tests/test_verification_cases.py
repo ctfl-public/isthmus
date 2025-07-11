@@ -54,24 +54,25 @@ def read_output():
 # %%
 """
 TEST VOXEL VOLUME DIVISION BEFORE MARCHING CUBES
-Test a 10x10x10 voxel cube centered in a 6x6x6 cell grid
-6x6x6 cell grid makes a 7x7x7 corner grid
+Test a 8x8x8 voxel cube centered in a 10x10x10 cell grid
+10x10x10 cell grid makes a 11x11x11 corner grid
 Cell side length: 1
-Voxel side length: 0.35
+Voxel side length: 0.667
 
-Grid should have following volume fractions:
+Grid should have following volume fractions for line at z=0,y=0:
+    Corner at center: 1.0
+    1st out: 140/144
+    2nd out: 13/18
+    3rd out: 7/18
+    4th out: 1/12
     Corners at edge of grid: 0.0
-    3x3x3 central corner grid: 1.0
-    Just outside of cube face: 1/4
-    Just outside of cube edge: 1/16
-    Just outside of cube corner: 1/64
 """
 def voxel_division_test():
 
     # voxel cube initialization
-    v_size = 0.35
-    cube_lo = np.asarray([-5*v_size]*3)
-    nvoxs = np.asarray([10,10,10])
+    v_size = 2/3
+    cube_lo = np.asarray([-4*v_size]*3)
+    nvoxs = np.asarray([8,8,8])
 
     voxels = []
     for k in range(nvoxs[2]):
@@ -84,59 +85,43 @@ def voxel_division_test():
     voxels = np.asarray(voxels)
 
     # grid initialization
-    lims = np.asarray([[-3,-3,-3], [3,3,3]])
-    ncells = np.asarray([7,7,7])
+    lims = np.asarray([[-5,-5,-5], [5,5,5]])
+    ncells = np.asarray([10,10,10])
 
     # divide volumes
-    corner_grid = Corner_Grid(lims, ncells, voxels, v_size)
+    mc_system = MC_System(lims, ncells, v_size, voxels, 'vox2surf.surf', 0)
+    corners = [crn for crn in mc_system.corner_grid.corners if abs(crn.position[2]) < 0.5 and abs(crn.position[1]) < 0.5]
 
-    # test resulting grid
-    inner = []
-    mid_face = []
-    mid_edge = []
-    mid_corner = []
-    outer = []
-    for c in corner_grid.corners:
-        if (any(abs(c.position) > 2.5)):
-            outer.append(c)
-        elif (any(abs(c.position) > 1.5)):
-            ext = sum(abs(c.position) > 1.5)
-            if (ext == 3):
-                mid_corner.append(c)
-            elif (ext == 2):
-                mid_edge.append(c)
-            else:
-                mid_face.append(c)
-        else:
-            inner.append(c)
+    # test resulting grid corners at center and going outward
 
     epsilon = 1e-6
-    for c in outer:
-        if (abs(c.volume - 0) > epsilon):
-            return False
-
-    for c in mid_corner:
-        if (abs(c.volume - 1/64) > epsilon):
-            return False
-
-    for c in mid_edge:
-        if (abs(c.volume - 1/16) > epsilon):
-            return False
-
-    for c in mid_face:
-        if (abs(c.volume - 1/4) > epsilon):
-            return False
-
-    for c in inner:
-        if (abs(c.volume - 1.0) > epsilon):
-            return False
+    for c in corners:
+        if (any(abs(c.position) > 4.5)):
+            if (abs(c.volume - 0) > epsilon):
+                return False
+        elif (any(abs(c.position) > 3.5)):
+            if (abs(c.volume - 1/12) > epsilon):
+                return False
+        elif (any(abs(c.position) > 2.5)):
+            if (abs(c.volume - 7/18) > epsilon):
+                return False
+        elif (any(abs(c.position) > 1.5)):
+            if (abs(c.volume - 13/18) > epsilon):
+                return False
+        elif (any(abs(c.position) > 0.5)):
+            if (abs(c.volume - 140/144) > epsilon):
+                return False
+        else:
+            if (abs(c.volume - 1) > epsilon):
+                return False
+        
 
     return True
 
 
 """
 TEST MARCHING CUBES SURFACE CREATION
-marching cubes 2x2x2 grid of side length 2e-6
+marching cubes 4x4x4 grid of side length 4e-6
 voxel cube such that grid corners are all 0s except 0.75 in center
 should create diamond-shape surface if marching cubes is working
 the centroid of each triangle is in a different octo-quadrant thing
@@ -198,9 +183,9 @@ class SurfTri:
 
 def surface_creation_test():
     # grid length and cube length
-    gl = 2e-6
+    gl = 4e-6
     # this cube length gives 0.75 volume fraction at corner at origin, 0 everywhere else
-    vl = (0.75**(1/3))*(gl/2)
+    vl = (0.75**(1/3))*(gl/4)
 
     # voxel cube initialization (2x2x2 also)
     v_size = vl/2
@@ -219,10 +204,10 @@ def surface_creation_test():
 
     # grid initialization
     lims = np.asarray([[-gl/2]*3, [gl/2]*3])
-    ncells = np.asarray([2,2,2])
+    ncells = np.asarray([4,4,4])
 
     # create surface
-    mc_system = MC_System(lims, ncells, v_size, voxels, 'vox2surf.surf', 0)
+    mc_system = MC_System(lims, ncells, v_size, voxels, 'vox2surf.surf', 0, weight=False)
     new_tris = mc_system.verts[mc_system.faces]
 
     # should be 8 triangles
@@ -379,8 +364,8 @@ def voxel_association_test(gpu=False):
         vox_file.write('{},{},{},{}\n'.format(voxels[i][0],voxels[i][1],voxels[i][2],vox_vals[i]))
     vox_file.close()
 
-    # check all 'internal face' surface voxels, i.e. not on edges or corners
-    pl_vox_lim = (nline/2 - 2)*v_size
+    # check all 'internal face' surface voxels, i.e. not near edges or corners
+    pl_vox_lim = (nline/2)*v_size/4
     norm_vox_lim = (nline/2 - 1)*v_size
 
     # collect voxels of each 'internal face', using face code above
@@ -413,7 +398,7 @@ def voxel_association_test(gpu=False):
         for fv in range(len(face_voxels[i])):
             cv = face_voxels[i][fv]
             if (abs(vox_vals[cv] - kvt*(vox_face_area/tri_area)) > epsilon):
-                print('Face {}: Computed area {}, True area {}, diff {}, epsilon {}'.format(
+                print('Face {}: Computed vox scalar {}, True vox scalar {}, Diff {}, Epsilon {}'.format(
                         i + 1, 
                         vox_vals[cv], 
                         kvt*(vox_face_area/tri_area), 

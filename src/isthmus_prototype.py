@@ -57,7 +57,7 @@ class Triangle:
         pf_lo = np.array([min(c) for c in trans_face])
         pf_hi = np.array([max(c) for c in trans_face])
 
-        epsilon = 1e-3*Surface_Voxel.size
+        epsilon = 1e-3*Voxel.size
         # then a fast AABB test between triangle and projected face
         for i in range(3):
             if (pf_lo[i] - self.hi[i] > epsilon or epsilon < self.lo[i] - pf_hi[i]):
@@ -231,40 +231,56 @@ def get_longest_side(verts):
         AC = [0, 2]
     return AC
 
-class Surface_Voxel:
+class Voxel:
     size = 0
-    def __init__(self, xs, index):
-        self.position = xs
-        low_corner = np.array(xs - 0.5*Surface_Voxel.size)
-        # corners: first four are zlo x-y plane, then last four are zhi x-y plane
-        cs  =  [low_corner + np.array([0,0,0])*Surface_Voxel.size,
-                low_corner + np.array([1,0,0])*Surface_Voxel.size,
-                low_corner + np.array([0,1,0])*Surface_Voxel.size,
-                low_corner + np.array([1,1,0])*Surface_Voxel.size,
-                low_corner + np.array([0,0,1])*Surface_Voxel.size,
-                low_corner + np.array([1,0,1])*Surface_Voxel.size,
-                low_corner + np.array([0,1,1])*Surface_Voxel.size,
-                low_corner + np.array([1,1,1])*Surface_Voxel.size
-                ]
-        # axis-aligned bounding box
-        self.lo = cs[0]
-        self.hi = cs[-1]
-        self.id = index   # own voxel index
-        self.surf_id = Surface_Voxel.n_svoxels # voxel index in surface voxel list
-        Surface_Voxel.n_svoxels += 1
+    n_surfvoxels = 0
+    def __init__(self, xs, i, j, k, index):
+        self.position = xs # centroid position
+        self.indices = np.array([i,j,k]) # position in 3D array
+        self.id = index   # own voxel index in flattened array
+        self.lo = np.array(xs - 0.5*Voxel.size) # bounding box lower limit
+        self.hi = self.lo + Voxel.size # bounding box higher limit
+        self.oid = -1 # index in original voxel list argument
+        self.type = -1 # integer depth into voxel structure, 0 is edge voxel
+        self.weight = 0 # weighting applied to volume in volume division
+        self.finalized = False # whether type has been determined yet
+        self.surface = False # flag for being edge (type 0) voxel
+
+        # placeholders for surface voxel data
+        self.surf_id = None
         self.triangle_ids = [] # index of each owned triangle
         self.closest_triangle_id = -1 # initialize to invalid id
         self.closest_triangle_dist = 1e12 # initialize to massive number
         self.closest_triangle_cell = -1 # initialize to invalid id
-        self.faces = []
+        self.faces = [] # 6 owned face objects of voxel cube
+
+    def generate(self, oid):
+        self.oid = oid
+        self.type = 0
+        self.weight = 1
+
+    def convert2surfvoxel(self):
+        self.surface = True
+        self.surf_id = Voxel.n_surfvoxels # voxel index in surface voxel list
+        Voxel.n_surfvoxels += 1
+
+        # corners: first four are zlo x-y plane, then last four are zhi x-y plane
+        cs  =  [self.lo + np.array([0,0,0])*Voxel.size,
+                self.lo + np.array([1,0,0])*Voxel.size,
+                self.lo + np.array([0,1,0])*Voxel.size,
+                self.lo + np.array([1,1,0])*Voxel.size,
+                self.lo + np.array([0,0,1])*Voxel.size,
+                self.lo + np.array([1,0,1])*Voxel.size,
+                self.lo + np.array([0,1,1])*Voxel.size,
+                self.lo + np.array([1,1,1])*Voxel.size
+                ]
+
         self.faces.append(Voxel_Face(0, cs[2], cs[0], cs[4], cs[6])) # xlo
         self.faces.append(Voxel_Face(1, cs[1], cs[3], cs[7], cs[5])) # xhi
         self.faces.append(Voxel_Face(2, cs[0], cs[1], cs[5], cs[4])) # ylo
         self.faces.append(Voxel_Face(3, cs[3], cs[2], cs[6], cs[7])) # yhi
         self.faces.append(Voxel_Face(4, cs[2], cs[3], cs[1], cs[0])) # zlo
         self.faces.append(Voxel_Face(5, cs[4], cs[5], cs[7], cs[6])) # zhi
-
-
 
 class Voxel_Face:
     def __init__(self, tipo, x1, x2, x3, x4):
@@ -325,12 +341,13 @@ class MC_System:
         If True, use GPU for calculations.
 
     """
-    def __init__(self, lims, ncells, voxel_size, voxels, name, call_no, gpu=False):
+    def __init__(self, lims, ncells, voxel_size, voxels, name, call_no, gpu=False, weight=True):
         print('Executing marching cubes...')
 
+        # initialize system variables
         self.gpu = gpu and numba_available  # Use GPU only if Numba is available
-
-        Surface_Voxel.n_svoxels = 0
+        self.weight_flag = weight # whether to weight voxels by layer
+        self.grid_lims = lims
         self.verts = []
         self.faces = []
         
@@ -343,18 +360,19 @@ class MC_System:
         self.check_voxels(lims, ncells, voxel_size, np.transpose(voxels))
         
         # initialize system variables
-        self.voxels = voxels
-        Surface_Voxel.size = voxel_size
+        Voxel.size = voxel_size
+        self.vox_grid = self.sort_voxels(voxels)
+        surf_voxels = self.weight_voxels(lims, ncells)
+        self.surface_voxels = surf_voxels
         
         # prepare marching cubes volume grid, and create mesh
-        self.corner_grid = Corner_Grid(lims, ncells + 1, self.voxels, Surface_Voxel.size)       
+        self.corner_grid = Corner_Grid(lims, ncells + 1, self.vox_grid)       
         self.create_surface(voxel_size)
         
         # write SPARTA-compliant surface
         self.write_surface(name)
         
         # find voxels on the surface and organize these surface voxels and triangles into cells
-        self.surface_voxels = self.sort_voxels()
         self.cell_grid = Cell_Grid(lims, ncells, self.surface_voxels, self.faces, self.verts, self.gpu)
         
         # associate voxels to triangles
@@ -387,75 +405,90 @@ class MC_System:
         if (len(positions) != 3):
             raise Exception("Invalid voxel coordinates given")
         
-        for i in range(3):
-            # i is 0,1,2 for x,y, or z; positions is list of coordinates
-            border = lims[0][i] + 0.05*(voxel_size + cell_length[i])
-            if (any(x < border for x in positions[i])):
-                raise Exception("Voxel(s) outside of acceptable grid space")
-            border = lims[1][i] - 0.05*(voxel_size + cell_length[i])
-            if (any(x > border for x in positions[i])):
-                raise Exception("Voxel(s) outside of acceptable grid space")
+        # bounding box for voxel centroids
+        voxc_lims = np.array([[min(pxs) for pxs in positions],  # mins
+                              [max(pxs) for pxs in positions]]) # maxs
+        # bounding box for acceptable voxel positions with appropriate buffer
+        if self.weight_flag:
+            Lmax = 1.5*max(cell_length) + voxel_size
+        else:
+            Lmax = 0.5*(max(cell_length) + voxel_size)
+        buffer_lims = np.array([lims[0] + Lmax, lims[1] - Lmax])
+
+        # test buffer box for positive area
+        if any([buffer_lims[0][i] >= buffer_lims[1][i] for i in range(3)]):
+            raise Exception("Insufficient buffer added to marching windows grid")
+        # test voxel positions for not trespassing into buffer zone
+        if any([buffer_lims[0][i] > voxc_lims[0][i] for i in range(3)]) or any([buffer_lims[1][i] < voxc_lims[1][i] for i in range(3)]):
+            raise Exception("Insufficient buffer added to marching windows grid for voxel set")
     
-    # voxels are [[x1,y1,z1], [x2,y2,z2],...]
-    def sort_voxels(self):
+    # vox_cs are [[x1,y1,z1], [x2,y2,z2],...] of centroids
+    def sort_voxels(self, vox_cs):
         print('Sorting which voxels are on the surface...')
         # initialize voxels and limits of voxel grid to be used
-        voxs = self.voxels
-        v_lims = np.concatenate((np.min(voxs, axis=0), np.max(voxs, axis=0))).reshape((2,3))
-        diff = np.rint((v_lims[1] - v_lims[0])/Surface_Voxel.size).astype(int) # closest regular grid distance from origin
-        v_lims[1] = v_lims[0] + Surface_Voxel.size*diff
+        first_vox = vox_cs[0]
+        nvoxs = np.ceil((first_vox - self.grid_lims[0])/Voxel.size)
+        vcx_lo = first_vox - nvoxs*Voxel.size
+        nvoxs += np.ceil((self.grid_lims[1] - first_vox)/Voxel.size)
+        vcx_hi = vcx_lo + nvoxs*Voxel.size
+        nvoxs = (nvoxs).astype(int) + 1
         
         # create voxel space grid, -1 if nothing, vox id if something
-        vox_grid = Voxel_Grid(v_lims, diff + 1)
+        vox_grid = Voxel_Grid([vcx_lo, vcx_hi], nvoxs)
         
         # populate voxel space
-        vox_elno = (np.ones(len(voxs))*-1).astype(int)
-        for i in range(len(voxs)):
-            ind = np.rint((voxs[i] - v_lims[0])/Surface_Voxel.size).astype(int)
+        vox_elno = (np.ones(len(vox_cs))*-1).astype(int)
+        for i in range(len(vox_cs)):
+            ind = np.rint((vox_cs[i] - vcx_lo)/Voxel.size).astype(int)
             n = vox_grid.get_element(ind[0],ind[1],ind[2])
             vox_elno[i] = n
-            if (vox_grid.vox_space[n] != -1):
+            if (vox_grid.voxels[n].type != -1):
                 print('WARNING: overwriting voxel with another in same position')
-            vox_grid.vox_space[n] = i
-        
-        # now, based on neighbors, get voxel types for 1st layer of surface
-        surface_voxels = []
-        for v in range(len(voxs)):
-            found_flag = 0
-            for d in range(3):
-                for i in range(-1, 2, 2):
-                    ind = list(vox_grid.get_indices(vox_elno[v]))
-                    ind[d] += i
-                    if (vox_grid.valid_element(ind)):
-                        other_ind = int(vox_grid.get_element(ind[0],ind[1],ind[2]))
-                        if (vox_grid.vox_space[other_ind] == -1):
-                            surface_voxels.append(Surface_Voxel(voxs[v], v))
-                            found_flag = 1
-                    else:
-                        surface_voxels.append(Surface_Voxel(voxs[v], v))
-                        found_flag = 1
-                    if found_flag:
-                        break
-                if found_flag:
-                    break
-            progress_bar(v+1, len(voxs), 'finding surface voxels')
+            vox_grid.voxels[n].generate(i)
 
-        # for found surface voxels, determine which faces are exposed
-        for sv in surface_voxels:
-            v = sv.id
-            counter = 0
-            for d in range(3): # x, y, z directions
-                for i in range(-1, 2, 2): # negative and positive neighbor
-                    ind = list(vox_grid.get_indices(vox_elno[v]))
-                    ind[d] += i
-                    if (vox_grid.valid_element(ind)):
-                        other_ind = int(vox_grid.get_element(ind[0],ind[1],ind[2]))
-                        if (vox_grid.vox_space[other_ind] == -1):
-                            sv.faces[counter].exposed = True
-                    else:
-                        sv.faces[counter].exposed = True
-                    counter += 1
-            progress_bar(v+1, len(voxs), 'finding exposed voxel faces')
+        return vox_grid
+        
+    def weight_voxels(self, lims, ncells):
+        # set voxel weights to something other than 0 or -1
+        surface_voxels = []
+        cell_length = max((lims[1] - lims[0])/ncells) # length of cell in [x,y,z] directions
+        cv_ratio = cell_length/Voxel.size
+        w_max = np.ceil((3*cv_ratio/2) - 0.5)
+        w_min = np.floor(-(3*cv_ratio/2) - 0.5)
+        level = 0
+        while level <= w_max or (-level - 1) >= w_min:
+            for n in range(len(self.vox_grid.voxels)):
+                vox = self.vox_grid.voxels[n]
+                if vox.finalized == False:
+                    if vox.type == level:
+                        self.vox_grid.check_surrounded_solid(n)
+                        if level == 0 and vox.type == 0:
+                            vox.convert2surfvoxel()
+                            surface_voxels.append(vox)
+                    elif vox.type == -(level + 1):
+                        self.vox_grid.check_surrounded_void(n)
+            level += 1
+            assert(level < 1000)
+
+        # set weights and find exposed faces
+        if self.weight_flag:
+            for n in range(len(self.vox_grid.voxels)):
+                vox = self.vox_grid.voxels[n]
+                dvox = (0.5 + vox.type)
+                vox.weight = 0.5*(1 + dvox*(2/(3*cv_ratio)))
+                vox.weight = min(vox.weight, 1.0)
+                vox.weight = max(0.0, vox.weight)
+                if vox.surface == True:
+                    self.vox_grid.check_exposed_faces(n)
+        else:
+            for n in range(len(self.vox_grid.voxels)):
+                vox = self.vox_grid.voxels[n]
+                if vox.type < 0:
+                    vox.weight = 0.0
+                else:
+                    vox.weight = 1.0
+                if vox.surface == True:
+                    self.vox_grid.check_exposed_faces(n)
 
         return surface_voxels
     
@@ -583,7 +616,7 @@ class MC_System:
     
     # write surface of triangles to disk, the argument is the name of the file
     def write_surface(self, name):
-        """! @warning Don't use naughty words for the filename or Vikram will be mad
+        """! @warning Test warning for doxygen
         """
         print('Writing SPARTA file of surface...')
         surf_file = open(name, "w")
@@ -629,7 +662,7 @@ class Grid:
         # i,j,k are x,y, and z indices
         return k*self.dims[1]*self.dims[0] + j*self.dims[0] + i
     
-    # get 3d coordinates (xky,z) from 1d position in array
+    # get 3d coordinates (x,y,z) from 1d position in array
     def get_indices(self,n):
         # a,b,c are x,y, and z indices
         c = int(n/(self.dims[1]*self.dims[0]))
@@ -651,9 +684,69 @@ class Grid:
 class Voxel_Grid(Grid):
     def __init__(self, lims, dims):
         super().__init__(lims, dims)
-        self.vox_space = np.ones(np.prod(dims))*-1   
+        self.voxels = np.array([[[Voxel(self.lims[0] + Voxel.size*np.array([i,j,k]), i, j, k, self.get_element(i,j,k)) \
+                                  for i in range(self.dims[0])] for j in range(self.dims[1])]  for k in range(self.dims[2])])
+        self.voxels = self.voxels.flatten()
+        for i in range(3): # possible x,y,z corner coordinates
+            self.coords[i] = list(np.linspace(self.lims[0][i], self.lims[1][i], self.dims[i]))
         
-    
+    def check_surrounded_solid(self, n):
+        # check 6 cardinal neighbors, initially assume surrounded by voxels
+        vox = self.voxels[n]
+        surrounded = True
+        for d in range(3):
+            for s in [-1, 1]:
+                ind = list(self.get_indices(n))
+                ind[d] += s
+                if self.valid_element(ind):
+                    neighbor = self.voxels[self.get_element(ind[0], ind[1], ind[2])]
+                    if neighbor.type < vox.type:
+                        surrounded = False
+                        break
+            if not(surrounded):
+                break
+
+        if surrounded:
+            vox.type += 1
+        else:
+            vox.finalized = True
+                
+    def check_surrounded_void(self, n):
+        # check 6 cardinal neighbors, initially assume surrounded by voids
+        vox = self.voxels[n]
+        surrounded = True
+        for d in range(3):
+            for s in [-1, 1]:
+                ind = list(self.get_indices(n))
+                ind[d] += s
+                if self.valid_element(ind):
+                    neighbor = self.voxels[self.get_element(ind[0], ind[1], ind[2])]
+                    if neighbor.type > vox.type:
+                        surrounded = False
+                        break
+            if not(surrounded):
+                break
+
+        if surrounded:
+            vox.type -= 1
+        else:
+            vox.finalized = True
+
+    def check_exposed_faces(self, n):
+        vox = self.voxels[n]
+        f_count = 0
+        for d in range(3):
+            for s in [-1, 1]:
+                ind = list(self.get_indices(n))
+                ind[d] += s
+                if self.valid_element(ind):
+                    neighbor = self.voxels[self.get_element(ind[0], ind[1], ind[2])]
+                    if neighbor.type < 0:
+                        vox.faces[f_count].exposed = True
+                else:
+                    vox.faces[f_count].exposed = True
+                f_count += 1
+
 # grid of corners, used to feed volume fractions to marching cubes function
 class Corner_Grid(Grid):
     """
@@ -680,7 +773,7 @@ class Corner_Grid(Grid):
     coords: 
     A list containing all possible coordinates for the x, y, and z dimensions, defining the positions of all corners within the grid.
     """
-    def __init__(self, lims, dims, voxels, voxel_size):
+    def __init__(self, lims, dims, vox_grid):
         print('Dividing voxel volumes for surface creation...')
         super().__init__(lims, dims)
         self.cell_length = (self.lims[1] - self.lims[0])/(self.dims - 1) # length of cell in [x,y,z] directions
@@ -689,46 +782,42 @@ class Corner_Grid(Grid):
         self.corners = self.corners.flatten()
         for i in range(3): # possible x,y,z corner coordinates
             self.coords[i] = list(np.linspace(self.lims[0][i], self.lims[1][i], self.dims[i]))
-        self.associate_voxels(voxels, voxel_size) # assign all voxels to owning corner and divide volumes        
+        self.associate_voxels(vox_grid) # assign all voxels to owning corner and divide volumes        
 
-    ## @defgroup Associators mwah mwah
-    ## @note jenny come back the kids miss you
+    ## @defgroup Associators
     ## @{
-    def associate_voxels(self, voxels, voxel_size): 
+    def associate_voxels(self, vox_grid):
+        voxels = vox_grid.voxels
         i = 0
         for v in voxels:
-             ind = (np.rint(((v - self.lims[0])/self.cell_length))).astype(int) # x,y,z corner indices
+             ind = (np.rint(((v.position - self.lims[0])/self.cell_length))).astype(int) # x,y,z corner indices
              self.corners[self.get_element(ind[0],ind[1],ind[2])].voxels.append(v)
-             progress_bar(i+1, len(voxels), 'finding surface voxels')
+             progress_bar(i+1, len(voxels), 'assigning voxels to corners')
              i += 1
-        self.divide_volumes(voxel_size) # divide volumes between corners
+        self.divide_volumes() # divide volumes between corners
     ## @}
 
-    def divide_volumes(self, voxel_size):
-        max_unique_dist = 0.5*(self.cell_length - voxel_size)
-        voxel_volume = voxel_size**3
-        i = 0
-        for c in self.corners:
-            if len(c.voxels):
-                for v in c.voxels:
-                    displ = v - c.position
-                    dist = np.array([abs(x) for x in displ])
-                    if all(dist <= max_unique_dist):
-                        c.volume += voxel_volume
-                    else: # if voxel is not fully inside one corner's space, divide between corners
-                        self.divide_voxel(c, v, voxel_size, max_unique_dist)
+    def divide_volumes(self):
+        max_unique_dist = 0.5*(self.cell_length - Voxel.size)
+        voxel_volume = Voxel.size**3
+        for i in range(len(self.corners)):
+            c = self.corners[i]
+            weighted_voxs = [vox for vox in c.voxels if vox.weight > 1e-6]
+            for v in weighted_voxs:
+                displ = v.position - c.position
+                dist = np.array([abs(x) for x in displ])
+                if all(dist < max_unique_dist):
+                    c.volume += voxel_volume*v.weight
+                else: # if voxel is not fully inside one corner's space, divide between corners
+                    self.divide_voxel(c, displ, max_unique_dist, v.weight)
             progress_bar(i+1, len(self.corners), 'dividing voxel volumes')
-            i += 1
 
         prd = np.prod(self.cell_length)
         for c in self.corners:
             c.volume /= prd
             
     # divide voxel volume between multiple corners
-    def divide_voxel(self, c, v, voxel_size, mud):
-        diff = v - c.position # distance between voxel center and corner in each dimension
-        min_pen_distance = mud # minimum distance in each dimension to penetrate into another corner
-        
+    def divide_voxel(self, c, diff, min_pen_distance, v_weight):
         penetration = np.array([abs(diff[i]) - min_pen_distance[i] for i in range(3)])
         pen_flag = np.array([0,0,0]) # flag for penetration in [x,y,z]; 0 if none, 1 if in positive direction, -1 if negative
         for i in range(3):
@@ -743,10 +832,9 @@ class Corner_Grid(Grid):
             for j in range(2):
                 for k in range(2):
                     active_flag = np.array([i,j,k])
-                    c_lengths = np.array([0,0,0])
-                    c_lengths = [(penetration[m] if active_flag[m] else voxel_size - penetration[m]) for m in range(3)]
+                    c_lengths = [(penetration[m] if active_flag[m] else Voxel.size - penetration[m]) for m in range(3)]
                     vol_index = c.indices + active_flag*pen_flag
-                    self.corners[self.get_element(vol_index[0], vol_index[1], vol_index[2])].volume += np.prod(c_lengths)
+                    self.corners[self.get_element(vol_index[0], vol_index[1], vol_index[2])].volume += np.prod(c_lengths)*v_weight
         
 # this is where voxels and triangles are located and connected to each other
 class Cell_Grid(Grid):
@@ -845,7 +933,7 @@ class Cell_Grid(Grid):
                     for vox in c_voxels[c_idx]:
                         for f in vox.faces:
                             if f.exposed and np.dot(f.n, t.normal) > 0:
-                                v_id = vox.id
+                                v_id = vox.oid
                                 sv_id = vox.surf_id
                                 # Assign the computed area to the voxel-triangle pair
                                 if v_id in t.voxel_ids:
