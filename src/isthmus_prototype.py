@@ -33,6 +33,14 @@ class MC_System:
     ndims: int
         Number of dimensions (2 or 3).
 
+    Attributes
+    ----------
+    corner_volumes: ndarray
+        D array of corner volumes used for marching cubes.
+    verts: ndarray
+        Array of vertices in the surface mesh.
+    faces: ndarray
+        Array of faces in the surface mesh.
     """
     def __init__(self, lims, ncells, voxel_size, voxels, name, call_no, gpu=False, weight=True, ndims=3):
         print('Executing marching cubes...')
