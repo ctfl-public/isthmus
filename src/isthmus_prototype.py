@@ -408,15 +408,19 @@ class Voxel_Face2D:
         self.n = np.array(self.n)
         self.exposed = False
 
-# this class is for corners in the grid, i.e. each MC_Cell corresponds to
-# 8 MC_Corners
+
 class MC_Corner:
     """
+    This class is for corners in the grid, i.e. each MC_Cell corresponds to
+    8 MC_Corners
+
     Parameters
     ----------
-    p: corner position
+    p: np.ndarray
+        corner position.
     
-    i, j, k: indices in grid
+    i, j, k: ints
+        indices in grid.
     """
     ## @param p corner position
     def __init__(self, p, i, j, k):
@@ -434,9 +438,17 @@ class MC_Corner2D:
         self.inside = -1 # 1 if inside, 0 if outside, -1 if unassigned
         self.voxels = [] # voxel ids owned by corner
 
-# this is the unit cell of the marching cubes grid, with position, owned voxels,
-# and owned triangles
+
 class MC_Cell:
+    """
+    This class is for cells in the grid, i.e. each MC_Grid corresponds to
+    1 MC_Cell
+
+    Parameters
+    ----------
+    i: int
+        index in grid.
+    """
     def __init__(self, i):
         self.surface_voxels = [] # surface voxel objects owned by this cell
         self.triangles = [] # triangles owned by this cell
@@ -576,25 +588,30 @@ class MC_Cell2D:
 
 #%% Main system class where all the magic happens
 class MC_System:  
-    """! @brief Holder of the keys of the kingdom
-    Welcome to the isthmus experience! This program assumes minimal overlap of pixels,
-    
-    Parameter
-    ---------
-    lims: [lo, hi] array
-        The bounding box enclosing the geometry. A 2x3 numpy array representing the domain limits of the grid in 3D space. 
+    """
+    Welcome to the isthmus experience! This program assumes minimal overlap of pixels.
+
+    Parameters
+    ----------
+    lims: array-like of shape (2, D)
+        The bounding box enclosing the geometry. 
+        A [lo, hi] array representing the domain limits of the grid in 3D space. 
     ncells: [nx, ny, nz] integers
         No. of cells in x, y, and z directions.
     voxel_size: float
         Voxel edge length.
     voxels: [[x, y, z], ...] ndarray
         Array of voxels positions.
-    name: 
+    name: str
         Name of output surface file.
-    call_no:
+    call_no: int
         Call number to append with the output file that associate triangles to voxels. 
     gpu: bool
         If True, use GPU for calculations.
+    weight: bool
+        If True, use the weighting method. It weights the voxels by their position from nearest edge voxel.
+    ndims: int
+        Number of dimensions (2 or 3).
 
     """
     def __init__(self, lims, ncells, voxel_size, voxels, name, call_no, gpu=False, weight=True, ndims=3):
@@ -1035,6 +1052,16 @@ class MC_System:
 #%% Grid class and derived classes
 
 class Grid:
+    """
+    Base class for all grid types.
+
+    Parameters
+    ----------
+    lims : array-like of shape (2, D)
+        Lower/upper limits per dimension.
+    dims : array-like of int, shape (D,)
+        Number of voxels per dimension.
+    """
     def __init__(self, lims, dims):
         self.lims = lims    # grid domain limits, [[xlo,ylo,zlo], [xhi,yhi,zhi]]
         self.dims = dims # [nx, ny, nz], no. of elements in each direction
@@ -1077,6 +1104,23 @@ class Grid:
         return True
   
 class Voxel_Grid(Grid):
+    """
+    A grid (box) of voxels. All voxels are initialized with self.oid=, self.type=-1, and self.weight=0.
+
+    Parameters
+    ----------
+    lims : array-like of shape (2, D)
+        Lower/upper limits per dimension.
+    dims : array-like of int, shape (D,)
+        Number of voxels per dimension.
+
+    Attributes
+    ----------
+    voxels : np.ndarray
+        Flattened array of voxel objects.
+    coords : list[list[float]]
+        Possible corner coordinates per dimension.
+    """
     def __init__(self, lims, dims):
         super().__init__(lims, dims)
         if self.ndims == 3:
@@ -1149,28 +1193,29 @@ class Voxel_Grid(Grid):
 # grid of corners, used to feed volume fractions to marching cubes function
 class Corner_Grid(Grid):
     """
-    Represents a 3D grid of corner points where each corner stores information about voxel assignments and volume fractions. 
-    
-    Attributes:
+    Represents a 3D/2D grid of corner points where each corner stores information about voxel assignments and volume fractions.
+
+    Parameters
     ----------
-    lims: 
-    A 2x3 numpy array representing the domain limits of the grid in 3D space. 
-    It contains the lower (lims[0]) and upper (lims[1]) bounds for the x, y, and z directions.
+    lims : array-like of shape (2, D)
+        Lower/upper limits per dimension.
+    dims : array-like of int, shape (D,)
+        Number of voxels per dimension.
+    vox_grid : Voxel_Grid
+        The voxel grid associated with this corner grid.
 
-    dims: 
-    A numpy array representing the number of cells along each dimension (x, y, z). 
-    This helps define how many corner points are in the grid.
+    Attributes
+    ----------
+    cell_length: array-like of shape (D,)
+        This represents the distance between corners along each dimension (x, y, z). 
+        It is computed from the domain limits and dimensions.
 
-    cell_length: 
-    This represents the distance between corners along each dimension (x, y, z). 
-    It is computed from the domain limits and dimensions.
+    corners: list[MC_Corner]
+        A list containing instances of the MC_Corner class. 
+        Each MC_Corner represents a corner point in the 3D grid and contains information like position and volume.
 
-    corners: 
-    A list containing instances of the MC_Corner class. 
-    Each MC_Corner represents a corner point in the 3D grid and contains information like position and volume.
-
-    coords: 
-    A list containing all possible coordinates for the x, y, and z dimensions, defining the positions of all corners within the grid.
+    coords: list[list[float]]
+        A list containing all possible coordinates for the x, y, and z dimensions, defining the positions of all corners within the grid.
     """
     def __init__(self, lims, dims, vox_grid):
         print('Dividing voxel volumes for surface creation...')
