@@ -8,6 +8,8 @@ try:
 except ImportError:
     cuda_available = False
 from isthmus_prototype import *
+from geometry import polygon_area, orient_polygon_xy, segment_plane_intersection, \
+    clip_sh, get_intersection_area
 
 
 class TestPolygonArea(unittest.TestCase):
