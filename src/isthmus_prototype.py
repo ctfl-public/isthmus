@@ -702,7 +702,8 @@ class MC_System:
     
     # vox_cs are [[x1,y1,z1], [x2,y2,z2],...] of centroids
     def sort_voxels(self, vox_cs):
-        print('Sorting which voxels are on the surface...')
+        print('Sorting which voxels are on the surface...', end='')
+        t1 = time.time()
         # initialize voxels and limits of voxel grid to be used
         first_vox = vox_cs[0]
         nvoxs = np.ceil((first_vox - self.grid_lims[0])/Voxel.size)
@@ -723,30 +724,41 @@ class MC_System:
             if (vox_grid.voxels[n].type != -1):
                 print('WARNING: overwriting voxel with another in same position')
             vox_grid.voxels[n].generate(i)
-
+        print('{:d} s'.format(round(time.time() - t1)))
         return vox_grid
         
     def weight_voxels(self, lims, ncells):
+        print('Weighting voxels...', end='')
+        t1 = time.time()
         # set voxel weights to something other than 0 or -1
         surface_voxels = []
-        cell_length = max((lims[1] - lims[0])/ncells) # length of cell in [x,y,z] directions
-        cv_ratio = cell_length/Voxel.size
-        w_max = np.ceil((3*cv_ratio/2) - 0.5)
-        w_min = np.floor(-(3*cv_ratio/2) - 0.5)
-        level = 0
-        while level <= w_max or (-level - 1) >= w_min:
+        if self.weight_flag:
+            cell_length = max((lims[1] - lims[0])/ncells) # length of cell in [x,y,z] directions
+            cv_ratio = cell_length/Voxel.size
+            w_max = np.ceil((3*cv_ratio/2) - 0.5)
+            w_min = np.floor(-(3*cv_ratio/2) - 0.5)
+            level = 0
+            while level <= w_max or (-level - 1) >= w_min:
+                for n in range(len(self.vox_grid.voxels)):
+                    vox = self.vox_grid.voxels[n]
+                    if vox.finalized == False:
+                        if vox.type == level:
+                            self.vox_grid.check_surrounded_solid(n)
+                            if level == 0 and vox.type == 0:
+                                vox.convert2surfvoxel()
+                                surface_voxels.append(vox)
+                        elif vox.type == -(level + 1):
+                            self.vox_grid.check_surrounded_void(n)
+                level += 1
+                assert(level < 1000)
+        else:
             for n in range(len(self.vox_grid.voxels)):
                 vox = self.vox_grid.voxels[n]
-                if vox.finalized == False:
-                    if vox.type == level:
-                        self.vox_grid.check_surrounded_solid(n)
-                        if level == 0 and vox.type == 0:
-                            vox.convert2surfvoxel()
-                            surface_voxels.append(vox)
-                    elif vox.type == -(level + 1):
-                        self.vox_grid.check_surrounded_void(n)
-            level += 1
-            assert(level < 1000)
+                if vox.type == 0:
+                    self.vox_grid.check_surrounded_solid(n)
+                    if vox.type == 0:
+                        vox.convert2surfvoxel()
+                        surface_voxels.append(vox)
 
         # set weights and find exposed faces
         if self.weight_flag:
@@ -768,6 +780,7 @@ class MC_System:
                 if vox.surface == True:
                     self.vox_grid.check_exposed_faces(n)
 
+        print('{:d} s'.format(round(time.time() - t1)))
         return surface_voxels
     
     # produce surface with marching cubes from corner grid
