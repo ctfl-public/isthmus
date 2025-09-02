@@ -702,8 +702,6 @@ class MC_System:
     
     # vox_cs are [[x1,y1,z1], [x2,y2,z2],...] of centroids
     def sort_voxels(self, vox_cs):
-        print('Sorting which voxels are on the surface...', end='')
-        t1 = time.time()
         # initialize voxels and limits of voxel grid to be used
         first_vox = vox_cs[0]
         nvoxs = np.ceil((first_vox - self.grid_lims[0])/Voxel.size)
@@ -724,12 +722,9 @@ class MC_System:
             if (vox_grid.voxels[n].type != -1):
                 print('WARNING: overwriting voxel with another in same position')
             vox_grid.voxels[n].generate(i)
-        print('{:d} s'.format(round(time.time() - t1)))
         return vox_grid
         
     def weight_voxels(self, lims, ncells):
-        print('Weighting voxels...', end='')
-        t1 = time.time()
         # set voxel weights to something other than 0 or -1
         surface_voxels = []
         if self.weight_flag:
@@ -780,7 +775,6 @@ class MC_System:
                 if vox.surface == True:
                     self.vox_grid.check_exposed_faces(n)
 
-        print('{:d} s'.format(round(time.time() - t1)))
         return surface_voxels
     
     # produce surface with marching cubes from corner grid
