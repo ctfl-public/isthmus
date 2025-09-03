@@ -6,7 +6,7 @@ from geometry import get_intersection_area, get_intersection_length, get_tri_are
 # Check if Numba is available, use isthmus_gpu
 try:
     import numba
-    from isthmus_gpu import get_intersection_area_gpu
+    from geometry_gpu import get_intersection_area_gpu
     numba_available = True
 except ImportError:
     numba_available = False

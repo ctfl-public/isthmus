@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 import trimesh
 import os
-from isthmus_prototype import *
+from mapping import *
 try:
     from numba import cuda
     cuda_available = cuda.is_available()
