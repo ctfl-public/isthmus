@@ -1,0 +1,23 @@
+
+---
+
+### 📄 Optional: `CITATION.cff`
+
+If you're using GitHub, this file enables "Cite this repository" buttons.
+
+```yaml
+cff-version: 1.2.0
+message: "If you use this software, please cite the following paper."
+authors:
+  - family-names: Huff
+    given-names: Ethan H.
+  - family-names: Ramu
+    given-names: Vijay B. Mohan
+  - family-names: Poovathingal
+    given-names: Savio J.
+title: A Computational Method for Data Transfer Between Voxel Structures and Triangular Surfaces in a Cut-Cell Domain
+version: 1.0.0
+date-released: 2025-09-04
+url: https://gitlab.com/ctfl_public_information/isthmus#
+license: MIT
+doi: 10.XXXXX/XXXXX
