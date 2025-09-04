@@ -5,7 +5,9 @@
 -----
 # ISTHMUS: The marching windows between voxels and surface mesh
 
-Isthmus provides a bridge between voxelized geometries and their surface representations. While voxels and pixels are commonly used to approximate solid structures in imaging and simulations, voxelized surfaces fail to capture detailed geometry, creating challenges when modeling fluid flow around them. Isthmus introduces marching windows to generate accurate surface definitions for voxelized structures and consistently transfer fluxes between the surface mesh and voxels.
+Isthmus is the **I**ntegrated **S**ystem for **T**hermochemical **H**eat transfer and **M**esoscale ablation of **U**nderlying **S**tructures, originally developed at University of Kentucky's [Computational Thermophysics and Fluids Laboratory](https://ctfl.engr.uky.edu/) (CFTL).
+
+The program provides a bridge between voxelized geometries and their surface representations. While voxels and pixels are commonly used to approximate solid structures in imaging and simulations, voxelized surfaces fail to capture detailed geometry, creating challenges when modeling fluid flow around them. Isthmus introduces marching windows to generate accurate surface definitions for voxelized structures and consistently transfer fluxes between the surface mesh and voxels.
 
 Isthmus is built for multiphysics simulations involving voxelized solids immersed in fluids, making it especially useful for problems such as fluid–structure interaction and thermochemical material response.
 
