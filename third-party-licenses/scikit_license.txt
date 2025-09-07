@@ -1,7 +1,7 @@
 The following license text applies to the utilized scikit-image
 library functionality, pulled from the scikit-image website
 (URL https://scikit-image.org/docs/stable/license.html) on November
-18, 2024. The relevant source code is generall contained in the
+18, 2024. The relevant source code is contained in the
 'src/Marching_Cubes' folder.
 
 Files: *

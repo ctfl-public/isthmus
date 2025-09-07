@@ -11,6 +11,11 @@ The program provides a bridge between voxelized geometries and their surface rep
 
 Isthmus is built for multiphysics simulations involving voxelized solids immersed in fluids, making it especially useful for problems such as fluid–structure interaction and thermochemical material response.
 
+## License
+
+This software is licensed under the MIT License (see `LICENSE` file).
+Please also see `third-party-licenses/` for licensing information on bundled dependencies.
+
 ## Table of Contents
 - [System Requirements](#system-requirements)
 - [Installation](#installation)
