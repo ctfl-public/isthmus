@@ -1,7 +1,6 @@
 __pycache__/
 *.py[cod]
 *.so
-*.png
 *.c
 */*.c
 testing/test_results
