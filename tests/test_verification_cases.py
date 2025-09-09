@@ -92,7 +92,7 @@ def voxel_division_test():
     ncells = np.asarray([10,10,10])
 
     # divide volumes
-    mc_system = MC_System(lims, ncells, v_size, voxels, 'vox2surf.surf', 0)
+    mc_system = marchingWindows(lims, ncells, v_size, voxels, 'vox2surf.surf', 0)
     corners = [crn for crn in mc_system.corner_grid.corners if abs(crn.position[2]) < 0.5 and abs(crn.position[1]) < 0.5]
 
     # test resulting grid corners at center and going outward
@@ -210,7 +210,7 @@ def surface_creation_test():
     ncells = np.asarray([4,4,4])
 
     # create surface
-    mc_system = MC_System(lims, ncells, v_size, voxels, 'vox2surf.surf', 0, weight=False)
+    mc_system = marchingWindows(lims, ncells, v_size, voxels, 'vox2surf.surf', 0, weight=False)
     new_tris = mc_system.verts[mc_system.faces]
 
     # should be 8 triangles
@@ -327,7 +327,7 @@ def voxel_association_test(gpu=False):
     ncells = np.asarray([ref, ref, ref])
 
     # create surface
-    mc_system = MC_System(lims, ncells, v_size, voxels, 'vox2surf.surf', 0, gpu=gpu)
+    mc_system = marchingWindows(lims, ncells, v_size, voxels, 'vox2surf.surf', 0, gpu=gpu)
     new_tris = mc_system.verts[mc_system.faces]
 
     combined_mesh = trimesh.Trimesh(vertices=mc_system.verts, faces=mc_system.faces)
@@ -447,7 +447,7 @@ def voxel2D_division_test():
     ncells = np.asarray([10,10])
 
     # divide volumes
-    mc_system = MC_System(lims, ncells, v_size, voxels, 'vox2surf.surf', 0, ndims=2)
+    mc_system = marchingWindows(lims, ncells, v_size, voxels, 'vox2surf.surf', 0, ndims=2)
     corners = [crn for crn in mc_system.corner_grid.corners if abs(crn.position[1]) < 0.5]
 
     # test resulting grid corners at center and going outward
@@ -543,7 +543,7 @@ def surface2D_creation_test():
     ncells = np.asarray([4,4])
 
     # create surface
-    mc_system = MC_System(lims, ncells, v_size, voxels, 'vox2surf.surf', 0, weight=False, ndims=2)
+    mc_system = marchingWindows(lims, ncells, v_size, voxels, 'vox2surf.surf', 0, weight=False, ndims=2)
     new_tris = mc_system.verts[mc_system.faces]
 
     # should be 4 edges
@@ -635,7 +635,7 @@ def voxel2D_association_test(gpu=False):
     ncells = np.asarray([ref, ref])
 
     # create surface
-    mc_system = MC_System(lims, ncells, v_size, voxels, 'vox2surf.surf', 0, gpu=gpu, ndims=2)
+    mc_system = marchingWindows(lims, ncells, v_size, voxels, 'vox2surf.surf', 0, gpu=gpu, ndims=2)
     new_tris = mc_system.verts[mc_system.faces]
 
     surf_tris = [SurfEdge(t) for t in new_tris]

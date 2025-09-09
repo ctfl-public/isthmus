@@ -7,7 +7,7 @@ from grid import Voxel, Voxel2D, Corner_Grid, Cell_Grid, Cell_Grid2D, \
 from geometry import get_tri_area, get_longest_side
 
 #%% Main system class where all the magic happens
-class MC_System:  
+class marchingWindows:  
     """
     Welcome to the isthmus experience! This program assumes minimal overlap of pixels.
 
