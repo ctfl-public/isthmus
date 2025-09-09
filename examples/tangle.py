@@ -46,5 +46,5 @@ for filename, code in matches:
 # Write each file
 for filename, blocks in files.items():
     out_path = Path(filename)
-    out_path.write_text("\n\n".join(blocks) + "\n")
+    out_path.write_text("\n".join(blocks) + "\n")
     print(f"Wrote {len(blocks)} block(s) to {filename}")
