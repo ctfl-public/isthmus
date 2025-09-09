@@ -10,14 +10,12 @@ print('ISTHMUS marching cubes module loaded')
 import os
 import numpy as np
 import pandas as pd
-import trimesh
 import imageio
 import warnings
 import json
 #
 # Import custom functions for this script
-import utils
-myfuncs = utils.utils()
+from utils import *
 #
 # Create required directories if they don't already exist
 dirs = ['grids','voxelData','voxelTri']
@@ -30,7 +28,7 @@ voxelSize = 3.3757*10**-6
 width = 200
 height = 100
 #
-# Sample was cropped with a 5 micron thick boundary of unused voxels
+# Sample was cropped with a 5 voxel thick boundary of unused voxels
 lo = [-5, -5, -5]
 hi = [height + 5, (width + 5), (width + 5)]
 lims = voxelSize*np.array([lo, hi])
@@ -60,7 +58,7 @@ print(f'Step {step:d}/7')
 #
 # Run marching cubes on loaded voxels and parse volumes, faces, and vertices
 resultsMC = MC_System(lims, nCells, voxelSize, voxs, 'vox2surf.surf', step, os.getcwd())
-cornerVolumes, faces, vertices = myfuncs.parseResultsMC(resultsMC, step)
+cornerVolumes, faces, vertices = parseResultsMC(resultsMC, step)
 #
 # Write coordinate voxel data
 cRemovedVox = np.zeros((len(voxs),1))
@@ -85,10 +83,10 @@ for step in range(1,7):
         voxsTemp = np.loadtxt(lines, delimiter=',', skiprows=0) 
     # 
     # Associate voxels to tirangles
-    tri_voxs,tri_sfracs = myfuncs.readVoxelTri('voxelTri/triangle_voxels_'+str(step-1)+'.dat')
+    tri_voxs,tri_sfracs = readVoxelTri('voxelTri/triangle_voxels_'+str(step-1)+'.dat')
     # 
     # Read surface reactions
-    COFormed = myfuncs.readReactionSPARTA('reactionFiles/surf_react_sparta_'+str(step)+'.out',timescale,timestepDSMC)
+    COFormed = readReactionSPARTA('reactionFiles/surf_react_sparta_'+str(step)+'.out',timescale,timestepDSMC)
     COFormed = COFormed[COFormed[:, 0].argsort()]
     # 
     # Calculate mass of carbon associated with each voxel
@@ -116,7 +114,7 @@ for step in range(1,7):
     # 
     # Create triangle mesh, assign voxels to triangles and save mesh
     resultsMC = MC_System(lims*voxelSize, nCells, voxelSize, voxs_isthmus, 'vox2surf.surf', step, os.getcwd(), weight=True, ndims=3)
-    cornerVolumes, faces, vertices = myfuncs.parseResultsMC(resultsMC, step)
+    cornerVolumes, faces, vertices = parseResultsMC(resultsMC, step)
     #
     # Write coordinate voxel data
     writeCoordinateVoxelData(voxsTemp)

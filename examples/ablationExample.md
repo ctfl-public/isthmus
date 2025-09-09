@@ -4,7 +4,7 @@ This tutorial guides you through the use of ISTHMUS to model the ablation of a c
 Gaseous interactions surrounding the material are handled by DSMC through SPARTA, while ISTHMUS recesses the material.
 The recession rates computed based on DSMC are provided for you in the folder `reactionFiles`, so running DSMC is not required.
 
-The material is a 100 $\times$ 200 $\times$ 200 micron rectangular sample is exposed to oxygen at 1500 K.
+The material is a 100 $\times$ 200 $\times$ 200 micron rectangular sample, and is exposed to oxygen at 1500 K.
 The oxygen is 95% monatomic O and 5% diatomic O$_2$ by mass. 
 
 ![Carbon sample used for ablation example.](single-phase-sample.png "Sample")
@@ -13,6 +13,12 @@ To execute the script, run the Python script produced by this tutorial document:
 ``` sh
 python3 ablationExample.py
 ```
+
+**Note:** It is recommended to run this example case using an HPC system, as the sample contains about 3.6 million voxels.
+On a typical laptop or desktop machine, completion may take around 1-2 hours.
+
+**Devs:** Note that this tutorial file `ablationExample.md` is tangled to the `.py` scripts required to run. 
+To change those files, make your changes here and then tangle the markdown file by running `tangle.py`.
 
 ---
 
@@ -43,14 +49,12 @@ This block loads supporting libraries for array handling, file I/O, mesh process
 import os
 import numpy as np
 import pandas as pd
-import trimesh
 import imageio
 import warnings
 import json
 #
 # Import custom functions for this script
-import utils
-myfuncs = utils.utils()
+from utils import *
 ```
 
 ---
@@ -73,6 +77,7 @@ print('Directories created')
 ## Define geometry parameters
 
 This block sets the **voxel size and bounding box**, accounting for cropped boundaries.
+When the sample was cropped from a larger specimen, a 5 voxel thick boundary of voxels was included which are not a part of the final result.
 
 ```python {file=ablationExample.py}
 #
@@ -81,7 +86,7 @@ voxelSize = 3.3757*10**-6
 width = 200
 height = 100
 #
-# Sample was cropped with a 5 micron thick boundary of unused voxels
+# Sample was cropped with a 5 voxel thick boundary of unused voxels
 lo = [-5, -5, -5]
 hi = [height + 5, (width + 5), (width + 5)]
 lims = voxelSize*np.array([lo, hi])
@@ -126,7 +131,7 @@ print(f'{len(voxs):d} voxels loaded from sample')
 
 ---
 
-## First marching cubes run
+## First marching windows run
 
 The **initial surface mesh** is generated with marching cubes.
 
@@ -138,28 +143,28 @@ print(f'Step {step:d}/7')
 #
 # Run marching cubes on loaded voxels and parse volumes, faces, and vertices
 resultsMC = MC_System(lims, nCells, voxelSize, voxs, 'vox2surf.surf', step, os.getcwd())
-cornerVolumes, faces, vertices = myfuncs.parseResultsMC(resultsMC, step)
+cornerVolumes, faces, vertices = parseResultsMC(resultsMC, step)
 ```
 
 We use a helper function to parse the data object produced by marching cubes:
 
 ```python {file=utils.py}
-class utils:
 #
-    def parseResultsMC(resultsMC,iteration):
-        """
-        Reads ISTHMUS marching cubes results :resultsMC: and returns volumes, faces, vertices.
-        Writes an STL file 'grids/grid_:iteration:.stl'.
-        """
-        #
-        cornerVolumes = resultsMC.corner_volumes
-        faces = resultsMC.faces
-        vertices = resultsMC.verts
-        combinedMesh = trimesh.Trimesh(vertices=vertices, faces=faces)
-        combinedMesh.export('grids/grid_'+str(iteration)+'.stl', file_type='stl_ascii')
-        cVolFrac = np.sum(cornerVolumes)/(nCells[0]*nCells[1]*nCells[2])
-        #
-        return cornerVolumes, faces, vertices
+def parseResultsMC(resultsMC,iteration):
+    """
+    Reads ISTHMUS marching cubes results :resultsMC: and returns volumes, faces, vertices.
+    Writes an STL file 'grids/grid_:iteration:.stl'.
+    """
+    #
+    import trimesh
+    cornerVolumes = resultsMC.corner_volumes
+    faces = resultsMC.faces
+    vertices = resultsMC.verts
+    combinedMesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+    combinedMesh.export('grids/grid_'+str(iteration)+'.stl', file_type='stl_ascii')
+    cVolFrac = np.sum(cornerVolumes)/(nCells[0]*nCells[1]*nCells[2])
+    #
+    return cornerVolumes, faces, vertices
 ```
 
 ---
@@ -188,73 +193,73 @@ f.close()
 We will use another helper function which reads triangle data from a .dat file:
 
 ```python {file=utils.py}
-    #
-    def readVoxelTri(name):
-        f = open(name)
-        tv_lines = f.readlines()
-        f.close()
-        tv_split = [tv.split() for tv in tv_lines]
-        triangle_ids = []
-        owned_voxels = []
-        owned_sfracs = []
-        c_voxels = []
-        c_scalar_fracs = []
-        tri_flag = 0
-        for i in range(1, len(tv_split)):
-            if (tv_split[i]):
-                if (tv_split[i][0] == 'start'):
-                    triangle_ids.append(int(tv_split[i][-1]))
-                    c_voxels = []
-                    c_scalar_fracs = []
-                    tri_flag = 1
-                elif (tv_split[i][0] == 'end'):
-                    owned_voxels.append(c_voxels)
-                    owned_sfracs.append(c_scalar_fracs)
-                    tri_flag = 0
-                elif (tri_flag == 1):
-                    c_voxels.append(int(tv_split[i][0]))
-                    c_scalar_fracs.append(float(tv_split[i][1]))
-                else:
-                    raise Exception("ERROR: unable to read triangle_voxels.dat")
-        tri_voxs = {triangle_ids[i] : owned_voxels[i] for i in range(len(triangle_ids))}
-        tri_sfracs = {triangle_ids[i] : owned_sfracs[i] for i in range(len(triangle_ids)) }
+#
+def readVoxelTri(name):
+    f = open(name)
+    tv_lines = f.readlines()
+    f.close()
+    tv_split = [tv.split() for tv in tv_lines]
+    triangle_ids = []
+    owned_voxels = []
+    owned_sfracs = []
+    c_voxels = []
+    c_scalar_fracs = []
+    tri_flag = 0
+    for i in range(1, len(tv_split)):
+        if (tv_split[i]):
+            if (tv_split[i][0] == 'start'):
+                triangle_ids.append(int(tv_split[i][-1]))
+                c_voxels = []
+                c_scalar_fracs = []
+                tri_flag = 1
+            elif (tv_split[i][0] == 'end'):
+                owned_voxels.append(c_voxels)
+                owned_sfracs.append(c_scalar_fracs)
+                tri_flag = 0
+            elif (tri_flag == 1):
+                c_voxels.append(int(tv_split[i][0]))
+                c_scalar_fracs.append(float(tv_split[i][1]))
+            else:
+                raise Exception("ERROR: unable to read triangle_voxels.dat")
+    tri_voxs = {triangle_ids[i] : owned_voxels[i] for i in range(len(triangle_ids))}
+    tri_sfracs = {triangle_ids[i] : owned_sfracs[i] for i in range(len(triangle_ids)) }
 
-        for tv in tri_voxs.values():
-            for v in range(len(tv)):
-                for v2 in range(v+1, len(tv)):
-                    if tv[v] == tv[v2]:
-                        raise Exception("ERROR: surface voxel double-assigned to a triangle")
-        return tri_voxs,tri_sfracs
+    for tv in tri_voxs.values():
+        for v in range(len(tv)):
+            for v2 in range(v+1, len(tv)):
+                if tv[v] == tv[v2]:
+                    raise Exception("ERROR: surface voxel double-assigned to a triangle")
+    return tri_voxs,tri_sfracs
 ```
 
 and another which reads the SPARTA surface files to generate mass fluxes based on chemical reaction:
 
 ```python {file=utils.py}
+#
+def readReactionSPARTA(fileName,timescale,timestepDSMC):
+    """
+    Reads file :fileName: in SPARTA surface format and returns the mass of CO formed at each surface triangle.
+    Scales proportionally by a recession timescale :timescale: and inversely by the timestep from SPARTA :timestepDSMC:.
+    """
     #
-    def readReactionSPARTA(fileName,timescale,timestepDSMC):
-        """
-        Reads file :fileName: in SPARTA surface format and returns the mass of CO formed at each surface triangle.
-        Scales proportionally by a recession timescale :timescale: and inversely by the timestep from SPARTA :timestepDSMC:.
-        """
-        #
-        # Initialize variables
-        timeFlag = 0
-        ind = 0
-        COFormed = []
-        #
-        # Read reation file from SPARTA
-        f = open(fileName,'r')
-        for num, line in enumerate(f, 1):
-            if 'ITEM: TIMESTEP' in line:
-                timeFlag += 1
-            if timeFlag == 2:
-                ind += 1
-            if timeFlag == 2 and ind > 9:
-                s=tuple(line.split())
-                COFormed.append([float(s[0]),float(s[1])*(12*10**-3)*fnum*timescale/(avog*timestepDSMC)])
-        f.close()
-        #
-        return np.array(COFormed)
+    # Initialize variables
+    timeFlag = 0
+    ind = 0
+    COFormed = []
+    #
+    # Read reation file from SPARTA
+    f = open(fileName,'r')
+    for num, line in enumerate(f, 1):
+        if 'ITEM: TIMESTEP' in line:
+            timeFlag += 1
+        if timeFlag == 2:
+            ind += 1
+        if timeFlag == 2 and ind > 9:
+            s=tuple(line.split())
+            COFormed.append([float(s[0]),float(s[1])*(12*10**-3)*fnum*timescale/(avog*timestepDSMC)])
+    f.close()
+    #
+    return np.array(COFormed)
 ```
 
 This loop runs **seven more ablation steps**, reading reaction data, computing carbon removal, and updating voxel/mesh state.
@@ -274,10 +279,10 @@ for step in range(1,7):
         voxsTemp = np.loadtxt(lines, delimiter=',', skiprows=0) 
     # 
     # Associate voxels to tirangles
-    tri_voxs,tri_sfracs = myfuncs.readVoxelTri('voxelTri/triangle_voxels_'+str(step-1)+'.dat')
+    tri_voxs,tri_sfracs = readVoxelTri('voxelTri/triangle_voxels_'+str(step-1)+'.dat')
     # 
     # Read surface reactions
-    COFormed = myfuncs.readReactionSPARTA('reactionFiles/surf_react_sparta_'+str(step)+'.out',timescale,timestepDSMC)
+    COFormed = readReactionSPARTA('reactionFiles/surf_react_sparta_'+str(step)+'.out',timescale,timestepDSMC)
     COFormed = COFormed[COFormed[:, 0].argsort()]
     # 
     # Calculate mass of carbon associated with each voxel
@@ -305,7 +310,7 @@ for step in range(1,7):
     # 
     # Create triangle mesh, assign voxels to triangles and save mesh
     resultsMC = MC_System(lims*voxelSize, nCells, voxelSize, voxs_isthmus, 'vox2surf.surf', step, os.getcwd(), weight=True, ndims=3)
-    cornerVolumes, faces, vertices = myfuncs.parseResultsMC(resultsMC, step)
+    cornerVolumes, faces, vertices = parseResultsMC(resultsMC, step)
     #
     # Write coordinate voxel data
     writeCoordinateVoxelData(voxsTemp)
@@ -323,7 +328,7 @@ for step in range(1,7):
 
 ---
 
-## Finalization
+## Completion
 
 At the end, intermediate files are removed and the run finishes.
 
@@ -337,7 +342,10 @@ print('Temporary directories removed')
 print('Done!')
 ```
 
+Before ablation:
 ![Initial carbon sample.](single-phase-sample.png "Sample")
+
+After ablation:
 ![Final result.](single-phase-result.png "Result")
 
 ---
