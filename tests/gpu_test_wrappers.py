@@ -1,5 +1,5 @@
 from numba import cuda
-from isthmus_gpu import *
+from geometry_gpu import *
 
 @cuda.jit
 def polygon_area_gpu_kernel(verts, n_verts, area):

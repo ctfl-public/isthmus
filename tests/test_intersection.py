@@ -2,12 +2,12 @@ import unittest
 import numpy as np
 try:
     from numba import cuda
-    from isthmus_gpu import *
+    from geometry_gpu import *
     from gpu_test_wrappers import *
     cuda_available = cuda.is_available()
 except ImportError:
     cuda_available = False
-from isthmus_prototype import *
+from mapping import *
 from geometry import polygon_area, orient_polygon_xy, segment_plane_intersection, \
     clip_sh, get_intersection_area
 
