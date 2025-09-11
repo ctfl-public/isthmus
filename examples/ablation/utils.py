@@ -190,7 +190,7 @@ class multiPhaseCase:
         self.voxs_types = {}
 
         # load voxels from tiff file
-        fileName = 'sample_multiphase.tif'
+        fileName = 'sampleMultiphase.tif'
         voxelMatrix = imageio.volread(fileName)
         voxs_layers = []
         voxs = []
