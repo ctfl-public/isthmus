@@ -6,6 +6,11 @@ The recession rates computed based on DSMC are provided for you in the folder `r
 
 The material is a 100 $\times$ 200 $\times$ 200 micron rectangular sample, and is exposed to oxygen at 1500 K.
 The oxygen is 95% monatomic O and 5% diatomic O$_2$ by mass. 
+We will run two cases with the same scale, but slightly different samples capturing different phenomena.
+- **Sample 1:** Ablation driven by microstructure defects.
+Voxels are pure carbon, and remaining unoccupied space is air.
+- **Sample 2:** An imitation of differential ablation where the scanned voxels are the composite carbon matrix and the remaining space is fiber.
+We emphasize that the matrix component of this case does not resemble a realistic carbon/carbon composite material.
 
 ![Carbon sample used for ablation example.](single-phase-sample.png "Sample")
 
@@ -24,7 +29,7 @@ To change those files, make your changes here and then tangle the markdown file 
 
 ## Setup and imports
 
-We first extend the Python path so the **ISTHMUS prototype module** can be imported, then confirm that it loads correctly.
+We first extend the Python path so the **ISTHMUS prototype module** can be imported.
 Change the `sys.path.append` line to point to where your ISTHMUS source directory is found.
 
 ```python {file=ablationExample.py}
@@ -35,6 +40,15 @@ import sys
 sys.path.append('/path/to/isthmus/src/')
 from isthmus_prototype import MC_System
 print('ISTHMUS marching cubes module loaded')
+```
+
+We will define a single variable `sample` to state whether we'd like to run the Sample 1 or 2 case.
+
+```python {file=ablationExample.py}
+#!/usr/bin/env python3
+#
+# Specify which case to run
+sample = 1
 ```
 
 ---
