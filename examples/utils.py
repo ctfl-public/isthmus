@@ -61,7 +61,7 @@ class ablationCase:
             cVolFrac = f.readline().strip('\n')
         # 
         # Read voxel data 
-        with open('voxelData/voxelData_'+str(step-1)+'.dat') as f: 
+        with open('voxelData/voxel_data_'+str(step-1)+'.dat') as f: 
             lines = (line for line in f if not line.startswith('#')) 
             voxs_alt = np.loadtxt(lines, delimiter=',', skiprows=0) 
         # 
@@ -152,4 +152,3 @@ class ablationCase:
         f.close()
         #
         return np.array(COFormed)
-
