@@ -163,6 +163,9 @@ class ablationCase:
 
 
 class multiPhaseCase:
+    """
+    Multiphase ablation case
+    """
     def __init__(self):
         # Create required directories if they don't already exist
         dirs = ['grids','voxel_data','voxel_tri']
@@ -188,8 +191,8 @@ class multiPhaseCase:
         self.lims = voxelSize*np.array([lo, hi])
         self.nCells = np.array([int(height),int(width),int(width)])
 
-        self.rate_of_ablation_fiber = 1
-        self.rate_of_ablation_matrix = 20
+        rate_of_ablation_fiber = 1
+        rate_of_ablation_matrix = 20
         self.voxs_types = {}
 
         # load voxels from tiff file
@@ -207,7 +210,11 @@ class multiPhaseCase:
                         voxs.append([k,j,i])
                         voxs_layers.append([k*self.voxelSize,j*self.voxelSize,i*self.voxelSize,len(voxs),'fiber'])
         self.voxs = np.array(voxs)*self.voxelSize
-        self.voxs_layers = voxs_layers
+
+        self.voxs_types.update({'structure_voxs': voxs_layers, 
+                        'rate_of_ablation_fiber': rate_of_ablation_fiber, 
+                        'rate_of_ablation_matrix': rate_of_ablation_matrix})
+
         print(f'{len(voxs):d} voxels loaded from sample')
 
         
@@ -257,13 +264,21 @@ class multiPhaseCase:
             for k in range(len(vox_no)):
                 cRemovedVox[vox_no[k]] = cRemovedVox[vox_no[k]] + sfracs[k] * self.COFormed[i,1]
         cRemovedVox[:] = cRemovedVox[:] + voxs_alt[:,3]
+
+        with open('voxel_data/types'+str(step-1)+'.dat', 'r') as file:
+            self.voxs_types = json.load(file)
         # 
         # Remove voxels
         voxs_alt = np.column_stack((voxs_alt[:,0:3],cRemovedVox))
         for i in range(len(cRemovedVox)):
-            if cRemovedVox[i] > massCVox:
+            if cRemovedVox[i] * self.voxs_types['rate_of_ablation_' + self.voxs_types['structure_voxs'][i][4]] > massCVox:
                 voxs_alt[i,:] = 0
-        self.voxs_alt = voxs_alt[~np.all(voxs_alt == 0, axis=1)] 
+                self.voxs_types['structure_voxs'][i] = [0,0,0,0,0]
+            else:
+                voxs_alt[i,3] = cRemovedVox[i] * self.voxs_types['rate_of_ablation_' + self.voxs_types['structure_voxs'][i][4]]
+
+        self.voxs_types['structure_voxs'] = [row for row in self.voxs_types['structure_voxs'] if any(element != 0 for element in row)]
+        self.voxs_alt = voxs_alt[~np.all(voxs_alt == 0, axis=1)]
 
         self.voxs = voxs_alt[:,0:3]
 
@@ -293,9 +308,7 @@ class multiPhaseCase:
         f.write(str(cVolFrac)+'\n')
         f.close()
 
-        self.voxs_types.update({'structure_voxs': self.voxs_layers, 
-                                'rate_of_ablation_fiber': self.rate_of_ablation_fiber, 
-                                'rate_of_ablation_matrix': self.rate_of_ablation_matrix})
+        # write the voxel types
         with open('voxel_data/types'+str(iteration)+'.dat', 'w+') as file:
             json.dump(self.voxs_types, file, indent=4)
     #
