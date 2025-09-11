@@ -8,7 +8,7 @@ from isthmus import readVoxelTri
 class ablationCase:
     def __init__(self):
         # Create required directories if they don't already exist
-        dirs = ['grids','voxelData','voxelTri']
+        dirs = ['grids','voxel_data','voxel_tri']
         for d in dirs:
             os.makedirs(d,exist_ok=True)
         print('Directories created')
@@ -63,12 +63,12 @@ class ablationCase:
             cVolFrac = f.readline().strip('\n')
         # 
         # Read voxel data 
-        with open('voxelData/voxelData_'+str(step-1)+'.dat') as f: 
+        with open('voxel_data/voxelData_'+str(step-1)+'.dat') as f: 
             lines = (line for line in f if not line.startswith('#')) 
             voxs_alt = np.loadtxt(lines, delimiter=',', skiprows=0) 
         # 
         # Associate voxels to tirangles (The flux mapping file)
-        tri_voxs,tri_sfracs = readVoxelTri('voxelTri/triangle_voxels_'+str(step-1)+'.dat')
+        tri_voxs,tri_sfracs = readVoxelTri('voxel_tri/triangle_voxels_'+str(step-1)+'.dat')
         
         #Triangles check between sparta and isthmus
         if len(self.COFormed) != len(tri_voxs):
