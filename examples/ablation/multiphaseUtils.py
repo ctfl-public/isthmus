@@ -6,7 +6,10 @@ import warnings
 from isthmus import readVoxelTri
 import json
 #
-class ablationCase:
+class multiPhaseCase:
+    """
+    Multiphase ablation case
+    """
     def __init__(self):
         #
         # Create required directories if they don't already exist
@@ -18,11 +21,11 @@ class ablationCase:
         # Size of the sample
         width = 200
         height = 100
-        buffer = 5  
-        voxelSize = 3.3757e-6
+        buffer = 5
+        voxelSize = 3.3757e-6  # in meters
         #
         # Timescale and some quantities for DSMC
-        self.timescale = 2
+        self.timescale = 1
         self.timestepDSMC = 7.5e-9
         self.fnum = 14866.591116363918
         self.avog = 6.022*10**23
@@ -32,22 +35,36 @@ class ablationCase:
         self.lims = voxelSize*np.array([lo, hi])
         self.nCells = np.array([int(height),int(width),int(width)])
         #
+        # Define multiphase ablation rates
+        rate_of_ablation_fiber = 1
+        rate_of_ablation_matrix = 20
+        self.voxs_types = {}
+        #
         # Load voxels from tiff file
-        fileName = 'sample.tif'
+        fileName = 'sampleMultiphase.tif'
         voxelMatrix = imageio.volread(fileName)
+        voxs_layers = []
         voxs = []
         for i in range(int(width)):
             for j in range(int(width)):
                 for k in range(int(height)):
-                    if voxelMatrix[k,j,i] == 1:
+                    if voxelMatrix[k,j,i] == 0:
                         voxs.append([k,j,i])
+                        voxs_layers.append([k*self.voxelSize,j*self.voxelSize,i*self.voxelSize,len(voxs),'matrix'])
+                    else:
+                        voxs.append([k,j,i])
+                        voxs_layers.append([k*self.voxelSize,j*self.voxelSize,i*self.voxelSize,len(voxs),'fiber'])
         self.voxs = np.array(voxs)*self.voxelSize
+        self.voxs_types.update({'structure_voxs': voxs_layers,
+                        'rate_of_ablation_fiber': rate_of_ablation_fiber,
+                        'rate_of_ablation_matrix': rate_of_ablation_matrix})
         print(f'{len(voxs):d} voxels loaded from sample')
         #
     def runDSMC(self, step):
         """
         Runs DSMC simulation using SPARTA.
         """
+        #
         # Instead of running DSMC, we will read pre-calculated reaction files
         COFormed = self._readReactionSPARTA('reactionFiles/surf_react_sparta_'+str(step)+'.out')
         self.COFormed = COFormed[COFormed[:, 0].argsort()]
@@ -61,12 +78,12 @@ class ablationCase:
         # Read volume fraction of the material
         with open('volFrac.dat') as f:
             cVolFrac = f.readline().strip('\n')
-        # 
-        # Read voxel data 
-        with open('voxel_data/voxel_data_'+str(step-1)+'.dat') as f:
+        #
+        # Read voxel data
+        with open('voxel_data/voxelData_'+str(step-1)+'.dat') as f:
             lines = (line for line in f if not line.startswith('#'))
-            voxs_alt = np.loadtxt(lines, delimiter=',', skiprows=0) 
-        # 
+            voxs_alt = np.loadtxt(lines, delimiter=',', skiprows=0)
+        #
         # Associate voxels to tirangles (The flux mapping file)
         tri_voxs,tri_sfracs = readVoxelTri('voxel_tri/triangle_voxels_'+str(step-1)+'.dat')
         #
@@ -79,7 +96,7 @@ class ablationCase:
         volC = volFracC*(self.lims[1,0]-self.lims[0,0])*(self.lims[1,1]-self.lims[0,1])*(self.lims[1,2]-self.lims[0,2])
         massC = volC*1800
         massCVox = massC/len(voxs_alt)
-        # 
+        #
         # Calculate the mass of carbon removed from each voxel
         cRemovedVox = np.zeros((len(voxs_alt)))
         for i in range(len(self.COFormed)):
@@ -88,13 +105,19 @@ class ablationCase:
             for k in range(len(vox_no)):
                 cRemovedVox[vox_no[k]] = cRemovedVox[vox_no[k]] + sfracs[k] * self.COFormed[i,1]
         cRemovedVox[:] = cRemovedVox[:] + voxs_alt[:,3]
-        # 
+        with open('voxel_data/types'+str(step-1)+'.dat', 'r') as file:
+            self.voxs_types = json.load(file)
+        #
         # Remove voxels
         voxs_alt = np.column_stack((voxs_alt[:,0:3],cRemovedVox))
         for i in range(len(cRemovedVox)):
-            if cRemovedVox[i] > massCVox:
+            if cRemovedVox[i] * self.voxs_types['rate_of_ablation_' + self.voxs_types['structure_voxs'][i][4]] > massCVox:
                 voxs_alt[i,:] = 0
-        self.voxs_alt = voxs_alt[~np.all(voxs_alt == 0, axis=1)] 
+                self.voxs_types['structure_voxs'][i] = [0,0,0,0,0]
+            else:
+                voxs_alt[i,3] = cRemovedVox[i] * self.voxs_types['rate_of_ablation_' + self.voxs_types['structure_voxs'][i][4]]
+        self.voxs_types['structure_voxs'] = [row for row in self.voxs_types['structure_voxs'] if any(element != 0 for element in row)]
+        self.voxs_alt = voxs_alt[~np.all(voxs_alt == 0, axis=1)]
         self.voxs = voxs_alt[:,0:3]
         #
     def postProcess(self, cornerVolumes, vertices, faces, iteration):
@@ -122,11 +145,15 @@ class ablationCase:
         f.write(str(cVolFrac)+'\n')
         f.close()
         #
+        # Write the voxel types
+        with open('voxel_data/types'+str(iteration)+'.dat', 'w+') as file:
+            json.dump(self.voxs_types, file, indent=4)
+            #
     def clean(self):
         #
         # Remove temporary files
-        os.remove('voxel_data')
-        os.remove('voxel_tri')
+        os.remove('voxelData')
+        os.remove('voxelTri')
         os.remove('volFrac.dat')
         print('Temporary directories removed')
         #
