@@ -2,7 +2,7 @@ import numpy as np
 import sys
 import imageio
 
-def tiff_slicer(fileName, x, y, z, l, voxel_size, lb= 5):
+def tiff_slicer(fileName, x, y, z, l, voxel_size, lb= 5, height=None):
     """
     Slices a 3D TIFF image into a smaller voxelized cube.
 
@@ -12,25 +12,29 @@ def tiff_slicer(fileName, x, y, z, l, voxel_size, lb= 5):
         y (float): y in the in-plane direction
         z (float): z is the through thickness direction
         l (float): cube length
+        height (float, optional): height if not cube. If None, height = l. Defaults to None.
         voxel_size (float): size of the voxel
         lb (float): buffer length
 
     Returns:
         tuple: (voxs, lims) A tuple containing the voxel coordinates and the limits of the sliced region.
     """
+    if not height:
+        height = l
+
     lo = [-lb, -lb, -lb]  
 
-    hi = [l/2 + lb, (l + lb), (l + lb)]
+    hi = [(height + lb), (l + lb), (l + lb)]
 
     lims = np.array([lo, hi])
 
     voxs = []
-    voxelMTX = loadData(fileName)
-    sample_mtx = voxelMTX[int(z):int(z+l/2),int(y-l/2):int(y + l/2),int(x-l/2):int(x + l/2)]
+    voxelMTX = _loadData(fileName)
+    sample_mtx = voxelMTX[int(z):int(z+height),int(y-l/2):int(y + l/2),int(x-l/2):int(x + l/2)]
 
     for i in range(int(l)):
         for j in range(int(l)):
-            for k in range(int(l/2)):
+            for k in range(int(height)):
                 if sample_mtx[k,j,i] == 1:
                     voxs.append([k,j,i])
 
@@ -39,7 +43,7 @@ def tiff_slicer(fileName, x, y, z, l, voxel_size, lb= 5):
 
     return voxs, lims
 
-def loadData(surf):
+def _loadData(surf):
     if surf.endswith('.tif'):
         # Load the TIFF file
         image_volume = imageio.volread(surf)
