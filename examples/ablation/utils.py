@@ -4,7 +4,6 @@ import os
 import imageio
 import warnings
 from isthmus import readVoxelTri
-import json
 #
 class ablationCase:
     def __init__(self):
@@ -57,20 +56,19 @@ class ablationCase:
         Ablates the material based on the mass of CO formed at each surface triangle.
         Updates the voxel list by removing voxels that have completely ablated.
         """
-        #
-        # Read volume fraction of the material
+        # read volume fraction of the material
         with open('volFrac.dat') as f:
             cVolFrac = f.readline().strip('\n')
         # 
         # Read voxel data 
-        with open('voxel_data/voxel_data_'+str(step-1)+'.dat') as f:
-            lines = (line for line in f if not line.startswith('#'))
+        with open('voxel_data/voxel_data_'+str(step-1)+'.dat') as f: 
+            lines = (line for line in f if not line.startswith('#')) 
             voxs_alt = np.loadtxt(lines, delimiter=',', skiprows=0) 
         # 
         # Associate voxels to tirangles (The flux mapping file)
         tri_voxs,tri_sfracs = readVoxelTri('voxel_tri/triangle_voxels_'+str(step-1)+'.dat')
         #
-        # Triangles check between sparta and isthmus
+        #Triangles check between sparta and isthmus
         if len(self.COFormed) != len(tri_voxs):
             warnings.warn("No of triangles in sparta is not equal to isthmus, debug!!!")
         #
