@@ -28,7 +28,7 @@ case.postProcess(cornerVolumes,vertices,faces,step)
 #
 # During remaining steps, ablate the material and update the grid
 for step in range(1,7):
-    print('Step {:d}/7', step)
+    print('Step {step:d}/7', step)
     #
     # Run DSMC
     case.runDSMC(step)
