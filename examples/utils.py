@@ -64,7 +64,7 @@ class ablationCase:
             cVolFrac = f.readline().strip('\n')
         # 
         # Read voxel data 
-        with open('voxel_data/voxelData_'+str(step-1)+'.dat') as f: 
+        with open('voxel_data/voxel_data_'+str(step-1)+'.dat') as f: 
             lines = (line for line in f if not line.startswith('#')) 
             voxs_alt = np.loadtxt(lines, delimiter=',', skiprows=0) 
         # 
@@ -239,7 +239,7 @@ class multiPhaseCase:
             cVolFrac = f.readline().strip('\n')
         # 
         # Read voxel data 
-        with open('voxel_data/voxelData_'+str(step-1)+'.dat') as f: 
+        with open('voxel_data/voxel_data_'+str(step-1)+'.dat') as f: 
             lines = (line for line in f if not line.startswith('#')) 
             voxs_alt = np.loadtxt(lines, delimiter=',', skiprows=0) 
         # 
