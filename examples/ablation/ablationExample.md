@@ -22,7 +22,7 @@ To change those files, make your changes here and then tangle the markdown file 
 
 ## Sample 1: Single Phase Ablation Driven by Microstructure Defects
 
-![Carbon sample used for single phase ablation example.](single-phase-sample.png "Sample")
+![Carbon sample used for single phase ablation example.](results/single-phase-sample.png "Sample")
 
 To execute the script, run the Python script produced by this tutorial document:
 ``` sh
@@ -297,16 +297,16 @@ A single helper function `_readReactionSPARTA` was used to read the DSmC data.
 ### Results
 
 Before ablation:
-![Initial carbon sample.](single-phase-sample.png "Sample")
+![Initial carbon sample.](results/single-phase-sample.png "Sample")
 
 After ablation:
-![Final result.](single-phase-result.png "Result")
+![Final result.](results/single-phase-result.png "Result")
 
 ---
 
 ## Sample 2: Multiphase Imitation of Differential Ablation
 
-<!-- ![Carbon sample used for single phase ablation example.](single-phase-sample.png "Sample") -->
+![Carbon sample used for multiphase ablation example.](results/multiphase-sample.png "Sample")
 
 To execute the script for this section, run the Python script provided:
 ``` sh
@@ -399,10 +399,10 @@ During the ablation step in the `ablate` function, the two defined rates are acc
 
 ### Results
 
-<!-- Before ablation: -->
-<!-- ![Initial carbon sample.](single-phase-sample.png "Sample") -->
+Before ablation:
+![Initial carbon sample.](results/multiphase-sample.png "Sample")
 
-<!-- After ablation: -->
-<!-- ![Final result.](single-phase-result.png "Result") -->
+After ablation:
+![Final result.](results/multiphase-result.png "Result")
 
 ---
