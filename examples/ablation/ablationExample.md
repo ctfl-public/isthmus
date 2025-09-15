@@ -4,7 +4,7 @@ This tutorial guides you through the use of ISTHMUS to model the ablation of a c
 Gaseous interactions surrounding the material are handled by DSMC through SPARTA, while ISTHMUS recesses the material.
 The recession rates computed based on DSMC are provided for you in the folder `reactionFiles`, so running DSMC is not required.
 
-The material is a 100 $\times$ 200 $\times$ 200 micron rectangular sample, and is exposed to oxygen at 1500 K.
+The material is a rectangular sample 100 $\times$ 200 $\times$ 200 voxels in size, where each voxel has a unit length of 3.376 microns, and is exposed to oxygen at 1500 K.
 The oxygen is 95% monatomic O and 5% diatomic O$_2$ by mass. 
 We will run two cases with the same scale, but slightly different samples capturing different phenomena.
 - **Sample 1:** Ablation driven by microstructure defects.
