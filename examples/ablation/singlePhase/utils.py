@@ -3,6 +3,7 @@ import trimesh
 import os
 import imageio
 import warnings
+import shutil
 from isthmus import readVoxelTri
 #
 class ablationCase:
@@ -123,8 +124,8 @@ class ablationCase:
     def clean(self):
         #
         # Remove temporary files
-        os.rmdir('voxel_data')
-        os.rmdir('voxel_tri')
+        shutil.rmtree('voxel_data',ignore_errors=True)
+        shutil.rmtree('voxel_tri',ignore_errors=True)
         os.remove('volFrac.dat')
         os.remove('vox2surf.surf')
         print('Temporary directories removed')
