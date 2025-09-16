@@ -41,9 +41,11 @@ Please also see `third-party-licenses/` for licensing information on bundled dep
 ## Installation
 
 ### Step 1: build environment
+An `envs/requirements_wout_gpu.txt` file is provided for pip installation, but using `conda` is highly recommended to leapfrog the packages dependency headache, especially if using GPU acceleration. In insisting of not using conda, you need to install the `numba` package and its dependencies manually and solve any conflicts.
+
 #### Install conda
-To work with Isthmus, using `conda` is higly recommended to leapforg the packages dependency headache. To test whether it is installed, run `conda --version` from terminal to check the current version. If not, conda can be installed by following the instructions 
-[here](https://docs.anaconda.com/anaconda/install/index.html). 
+To work with Isthmus, using `conda` is higly recommended to leapfrog the packages dependency headache. To test whether it is installed, run `conda --version` from terminal to check the current version. If not, conda can be installed by following the instructions
+[here](https://docs.anaconda.com/anaconda/install/index.html).
 
 > **Note:** Using HPC, load conda module using your administrator guidelines, for example, in LCC (Lipscomb Compute Cluster) use: 
 > ```bash
