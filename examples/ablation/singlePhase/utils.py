@@ -21,7 +21,7 @@ class ablationCase:
         voxelSize = 3.3757e-6
         #
         # Timescale and some quantities for DSMC
-        self.timescale = 100
+        self.couplingTime = 100
         self.timestepDSMC = 7.5e-9
         self.fnum = 14866.591116363918
         self.avog = 6.022*10**23
@@ -149,7 +149,7 @@ class ablationCase:
                 ind += 1
             if timeFlag == 2 and ind > 9:
                 s=tuple(line.split())
-                COFormed.append([float(s[0]),float(s[1])*(12*10**-3)*self.fnum*self.timescale/(self.avog*self.timestepDSMC)])
+                COFormed.append([float(s[0]),float(s[1])*(12*10**-3)*self.fnum*self.couplingTime/(self.avog*self.timestepDSMC)])
         f.close()
         #
         return np.array(COFormed)
