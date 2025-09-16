@@ -61,7 +61,7 @@ The sample was originally extracted from a scanned specimen using a buffer layer
         # Size of the sample
         width = 200
         height = 100
-        buffer = 5  
+        buffer = 5
         voxelSize = 3.3757e-6
         #
         # Timescale and some quantities for DSMC
