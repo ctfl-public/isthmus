@@ -35,7 +35,7 @@ python3 singlePhase.py
 For this example, we define a single class `ablationCase` which contains the details specific to the sample analyzed.
 The class is located in `utils.py`.
 
-```python {file=singlePhase/results.py}
+```python {file=singlePhase/utils.py}
 import numpy as np
 import trimesh
 import os
@@ -76,7 +76,7 @@ The sample was originally extracted from a scanned specimen using a buffer layer
         self.nCells = np.array([int(height),int(width),int(width)])
         #
         # Load voxels from tiff file
-        fileName = 'sample.tif'
+        fileName = 'sample1.tif'
         voxelMatrix = imageio.volread(fileName)
         voxs = []
         for i in range(int(width)):
