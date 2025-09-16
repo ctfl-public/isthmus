@@ -123,9 +123,10 @@ class ablationCase:
     def clean(self):
         #
         # Remove temporary files
-        os.remove('voxel_data')
-        os.remove('voxel_tri')
+        os.rmdir('voxel_data')
+        os.rmdir('voxel_tri')
         os.remove('volFrac.dat')
+        os.remove('vox2surf.surf')
         print('Temporary directories removed')
         #
     def _readReactionSPARTA(self,fileName):
