@@ -64,7 +64,7 @@ The sample was originally extracted from a scanned specimen using a buffer layer
         voxelSize = 3.3757e-6
         #
         # Timescale and some quantities for DSMC
-        self.timescale = 2
+        self.timescale = 100
         self.timestepDSMC = 7.5e-9
         self.fnum = 14866.591116363918
         self.avog = 6.022*10**23
@@ -112,7 +112,7 @@ weight = False
 #
 # Initial step: Generate initial mesh
 step = 0
-print(f'Step {step:d}/7')
+print(f'Step {step:d}/6')
 #
 # Run ISTHMUS on loaded voxels and parse volumes, faces, and vertices
 resultsMC = marchingWindows(case.lims, case.nCells, case.voxelSize, case.voxs, 'vox2surf.surf', step,
@@ -126,7 +126,7 @@ case.postProcess(cornerVolumes,vertices,faces,step)
 #
 # During remaining steps, ablate the material and update the grid
 for step in range(1,7):
-    print('Step {step:d}/7', step)
+    print(f'Step {step:d}/6')
     #
     # Run DSMC
     case.runDSMC(step)
@@ -212,7 +212,7 @@ During this step, a voxel is removed if its mass has been totally removed by the
             if cRemovedVox[i] > massCVox:
                 voxs_alt[i,:] = 0
         self.voxs_alt = voxs_alt[~np.all(voxs_alt == 0, axis=1)] 
-        self.voxs = voxs_alt[:,0:3]
+        self.voxs = self.voxs_alt[:,0:3]
         #
 ```
 

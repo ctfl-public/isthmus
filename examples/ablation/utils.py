@@ -21,7 +21,7 @@ class ablationCase:
         voxelSize = 3.3757e-6
         #
         # Timescale and some quantities for DSMC
-        self.timescale = 2
+        self.timescale = 100
         self.timestepDSMC = 7.5e-9
         self.fnum = 14866.591116363918
         self.avog = 6.022*10**23
@@ -93,7 +93,7 @@ class ablationCase:
             if cRemovedVox[i] > massCVox:
                 voxs_alt[i,:] = 0
         self.voxs_alt = voxs_alt[~np.all(voxs_alt == 0, axis=1)] 
-        self.voxs = voxs_alt[:,0:3]
+        self.voxs = self.voxs_alt[:,0:3]
         #
     def postProcess(self, cornerVolumes, vertices, faces, iteration):
         """

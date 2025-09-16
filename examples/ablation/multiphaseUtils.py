@@ -118,7 +118,7 @@ class multiPhaseCase:
                 voxs_alt[i,3] = cRemovedVox[i] * self.voxs_types['rate_of_ablation_' + self.voxs_types['structure_voxs'][i][4]]
         self.voxs_types['structure_voxs'] = [row for row in self.voxs_types['structure_voxs'] if any(element != 0 for element in row)]
         self.voxs_alt = voxs_alt[~np.all(voxs_alt == 0, axis=1)]
-        self.voxs = voxs_alt[:,0:3]
+        self.voxs = self.voxs_alt[:,0:3]
         #
     def postProcess(self, cornerVolumes, vertices, faces, iteration):
         """
