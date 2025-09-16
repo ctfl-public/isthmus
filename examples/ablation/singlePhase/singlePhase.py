@@ -29,7 +29,7 @@ case.postProcess(cornerVolumes,vertices,faces,step)
 #
 # During remaining steps, ablate the material and update the grid
 for step in range(1,nsteps+1):
-    print(f'Step {step:d}/{nsteps:d}', step)
+    print(f'Step {step:d}/{nsteps:d}')
     #
     # Run DSMC
     case.runDSMC(step)
