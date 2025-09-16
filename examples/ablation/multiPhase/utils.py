@@ -56,10 +56,10 @@ class multiPhaseCase:
                 for k in range(int(height)):
                     if voxelMatrix[k,j,i] == 0:
                         voxs.append([k,j,i])
-                        voxs_layers.append([k*self.voxelSize,j*self.voxelSize,i*self.voxelSize,len(voxs),'matrix'])
+                        voxs_layers.append([k*self.voxelSize,j*self.voxelSize,i*self.voxelSize,len(voxs),'Matrix'])
                     else:
                         voxs.append([k,j,i])
-                        voxs_layers.append([k*self.voxelSize,j*self.voxelSize,i*self.voxelSize,len(voxs),'fiber'])
+                        voxs_layers.append([k*self.voxelSize,j*self.voxelSize,i*self.voxelSize,len(voxs),'Fiber'])
         self.voxs = np.array(voxs)*self.voxelSize
         self.voxs_types.update({'structure_voxs': voxs_layers,
                         'relSpecificVolumeFiber': relSpecificVolumeFiber,
