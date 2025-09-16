@@ -323,13 +323,14 @@ Instead we explain the changes for a multiphase setup.
 ### Rates of Recession
 
 For this example, we choose to recess the fiber at the same rate produced in the single phase example, while the matrix recesses 20$\times$ faster. 
+Physically, the specific volume of the matrix is 20 times higher than the fiber.
 During the initialization of our class `multiPhaseCase`, we define these two rates.
 
 ```python
         #
         # Define multiphase ablation rates
-        rate_of_ablation_fiber = 1
-        rate_of_ablation_matrix = 20
+        relSpecificVolumeFiber = 1
+        relSpecVolumeMatrix = 20
         self.voxs_types = {}
 ```
 
@@ -353,8 +354,8 @@ Within the same function, we need to provide the `vox_types` array with the rate
                         voxs_layers.append([k*self.voxelSize,j*self.voxelSize,i*self.voxelSize,len(voxs),'fiber'])
         self.voxs = np.array(voxs)*self.voxelSize
         self.voxs_types.update({'structure_voxs': voxs_layers,
-                        'rate_of_ablation_fiber': rate_of_ablation_fiber,
-                        'rate_of_ablation_matrix': rate_of_ablation_matrix})
+                        'relSpecificVolumeFiber': relSpecificVolumeFiber,
+                        'relSpecVolumeMatrix': relSpecVolumeMatrix})
         print(f'{len(voxs):d} voxels loaded from sample')
 ```
 

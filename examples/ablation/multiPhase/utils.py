@@ -36,8 +36,8 @@ class multiPhaseCase:
         self.nCells = np.array([int(height),int(width),int(width)])
         #
         # Define multiphase ablation rates
-        rate_of_ablation_fiber = 1
-        rate_of_ablation_matrix = 20
+        relSpecificVolumeFiber = 1
+        relSpecVolumeMatrix = 20
         self.voxs_types = {}
         #
         # Load voxels from tiff file
@@ -56,8 +56,8 @@ class multiPhaseCase:
                         voxs_layers.append([k*self.voxelSize,j*self.voxelSize,i*self.voxelSize,len(voxs),'fiber'])
         self.voxs = np.array(voxs)*self.voxelSize
         self.voxs_types.update({'structure_voxs': voxs_layers,
-                        'rate_of_ablation_fiber': rate_of_ablation_fiber,
-                        'rate_of_ablation_matrix': rate_of_ablation_matrix})
+                        'relSpecificVolumeFiber': relSpecificVolumeFiber,
+                        'relSpecVolumeMatrix': relSpecVolumeMatrix})
         print(f'{len(voxs):d} voxels loaded from sample')
         #
     def runDSMC(self, step):
