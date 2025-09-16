@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-tangle_braces.py - Simple Markdown to Python file tangler
+tangle.py - Simple Markdown to Python file tangler
 that works with `{file=filename}` syntax.
 
 Usage:
-    python tangle_braces.py tutorial.md
+    python tangle.py singlePhase/ablationTutorial.md
 """
 
 import sys
