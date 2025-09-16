@@ -9,16 +9,13 @@ from isthmus import readVoxelTri
 class ablationCase:
     def __init__(self):
         #
-        # Create required directories if they don't already exist
-        dirs = ['grids','voxel_data','voxel_tri']
-        for d in dirs:
-            os.makedirs(d,exist_ok=True)
-        print('Directories created')
+        # .tif file of sample to be analyzed
+        fileName = 'sample1.tif'
         #
         # Size of the sample
         width = 200
         height = 100
-        buffer = 5  
+        buffer = 5
         voxelSize = 3.3757e-6
         #
         # Timescale and some quantities for DSMC
@@ -26,14 +23,22 @@ class ablationCase:
         self.timestepDSMC = 7.5e-9
         self.fnum = 14866.591116363918
         self.avog = 6.022*10**23
+        self.molarMass = 18 
+        #
+        # Set up domain
         self.voxelSize = voxelSize
         lo = [-buffer, -buffer, -buffer]
         hi = [height + buffer, (width + buffer), (width + buffer)]
         self.lims = voxelSize*np.array([lo, hi])
         self.nCells = np.array([int(height),int(width),int(width)])
         #
+        # Create required directories if they don't already exist
+        dirs = ['grids','voxel_data','voxel_tri']
+        for d in dirs:
+            os.makedirs(d,exist_ok=True)
+        print('Directories created')
+        #
         # Load voxels from tiff file
-        fileName = 'sample1.tif'
         voxelMatrix = imageio.volread(fileName)
         voxs = []
         for i in range(int(width)):
@@ -76,7 +81,7 @@ class ablationCase:
         # Calculate mass of carbon associated with each voxel
         volFracC = float(cVolFrac)
         volC = volFracC*(self.lims[1,0]-self.lims[0,0])*(self.lims[1,1]-self.lims[0,1])*(self.lims[1,2]-self.lims[0,2])
-        massC = volC*1800
+        massC = volC*self.molarMass*100
         massCVox = massC/len(voxs_alt)
         # 
         # Calculate the mass of carbon removed from each voxel

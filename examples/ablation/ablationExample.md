@@ -53,11 +53,8 @@ The sample was originally extracted from a scanned specimen using a buffer layer
 ```python {file=singlePhase/utils.py}
     def __init__(self):
         #
-        # Create required directories if they don't already exist
-        dirs = ['grids','voxel_data','voxel_tri']
-        for d in dirs:
-            os.makedirs(d,exist_ok=True)
-        print('Directories created')
+        # .tif file of sample to be analyzed
+        fileName = 'sample1.tif'
         #
         # Size of the sample
         width = 200
@@ -70,14 +67,22 @@ The sample was originally extracted from a scanned specimen using a buffer layer
         self.timestepDSMC = 7.5e-9
         self.fnum = 14866.591116363918
         self.avog = 6.022*10**23
+        self.molarMass = 18 
+        #
+        # Set up domain
         self.voxelSize = voxelSize
         lo = [-buffer, -buffer, -buffer]
         hi = [height + buffer, (width + buffer), (width + buffer)]
         self.lims = voxelSize*np.array([lo, hi])
         self.nCells = np.array([int(height),int(width),int(width)])
         #
+        # Create required directories if they don't already exist
+        dirs = ['grids','voxel_data','voxel_tri']
+        for d in dirs:
+            os.makedirs(d,exist_ok=True)
+        print('Directories created')
+        #
         # Load voxels from tiff file
-        fileName = 'sample1.tif'
         voxelMatrix = imageio.volread(fileName)
         voxs = []
         for i in range(int(width)):
@@ -197,7 +202,7 @@ During this step, a voxel is removed if its mass has been totally removed by the
         # Calculate mass of carbon associated with each voxel
         volFracC = float(cVolFrac)
         volC = volFracC*(self.lims[1,0]-self.lims[0,0])*(self.lims[1,1]-self.lims[0,1])*(self.lims[1,2]-self.lims[0,2])
-        massC = volC*1800
+        massC = volC*self.molarMass*100
         massCVox = massC/len(voxs_alt)
         # 
         # Calculate the mass of carbon removed from each voxel
@@ -331,7 +336,7 @@ During the initialization of our class `multiPhaseCase`, we define these two rat
         #
         # Define multiphase ablation rates
         relSpecificVolumeFiber = 1
-        relSpecVolumeMatrix = 20
+        relSpecificVolumeMatrix = 20
         self.voxs_types = {}
 ```
 
@@ -356,7 +361,7 @@ Within the same function, we need to provide the `vox_types` array with the rate
         self.voxs = np.array(voxs)*self.voxelSize
         self.voxs_types.update({'structure_voxs': voxs_layers,
                         'relSpecificVolumeFiber': relSpecificVolumeFiber,
-                        'relSpecVolumeMatrix': relSpecVolumeMatrix})
+                        'relSpecificVolumeMatrix': relSpecificVolumeMatrix})
         print(f'{len(voxs):d} voxels loaded from sample')
 ```
 
@@ -392,11 +397,11 @@ During the ablation step in the `ablate` function, the two defined rates are acc
         # Remove voxels
         voxs_alt = np.column_stack((voxs_alt[:,0:3],cRemovedVox))
         for i in range(len(cRemovedVox)):
-            if cRemovedVox[i] * self.voxs_types['rate_of_ablation_' + self.voxs_types['structure_voxs'][i][4]] > massCVox:
+            if cRemovedVox[i] * self.voxs_types['relSpecificVolume' + self.voxs_types['structure_voxs'][i][4]] > massCVox:
                 voxs_alt[i,:] = 0
                 self.voxs_types['structure_voxs'][i] = [0,0,0,0,0]
             else:
-                voxs_alt[i,3] = cRemovedVox[i] * self.voxs_types['rate_of_ablation_' + self.voxs_types['structure_voxs'][i][4]]
+                voxs_alt[i,3] = cRemovedVox[i] * self.voxs_types['relSpecificVolume' + self.voxs_types['structure_voxs'][i][4]]
         self.voxs_types['structure_voxs'] = [row for row in self.voxs_types['structure_voxs'] if any(element != 0 for element in row)]
         self.voxs_alt = voxs_alt[~np.all(voxs_alt == 0, axis=1)]
         self.voxs = voxs_alt[:,0:3]
