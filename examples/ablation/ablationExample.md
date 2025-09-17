@@ -22,7 +22,7 @@ To change those files, make your changes here and then tangle the markdown file 
 
 ## Sample 1: Single Phase Ablation Driven by Microstructure Defects
 
-![Carbon sample used for single phase ablation example.](results/single-phase-sample.png "Sample")
+![Carbon sample used for single phase ablation example.](singlePhase/results/single-phase-sample.png "Sample")
 
 To execute the script, run the Python script produced by this tutorial document:
 ``` sh
@@ -317,7 +317,7 @@ After ablation:
 
 ## Sample 2: Multiphase Imitation of Differential Ablation
 
-![Carbon sample used for multiphase ablation example.](results/multiphase-sample.png "Sample")
+![Carbon sample used for multiphase ablation example.](multiPhase/results/multiphase-sample.png "Sample")
 
 To execute the script for this section, run the Python script provided:
 ``` sh
