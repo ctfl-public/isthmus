@@ -1,4 +1,4 @@
-# Tutorial: Ablation of a Carbon material sample using ISTHMUS and DSMC
+# Tutorial: Ablation of a Carbon Material Sample using ISTHMUS and DSMC
 
 This tutorial guides you through the use of ISTHMUS to model the ablation of a carbon material sample when exposed to high temperature.
 Gaseous interactions surrounding the material are handled by DSMC through SPARTA, while ISTHMUS recesses the material.
@@ -61,13 +61,13 @@ The sample was originally extracted from a scanned specimen using a buffer layer
         height = 100
         buffer = 5
         voxelSize = 3.3757e-6
+        self.couplingTime = 100
+        self.sampleDensity = 1800 
         #
         # Timescale and some quantities for DSMC
-        self.couplingTime = 100
         self.timestepDSMC = 7.5e-9
         self.fnum = 14866.591116363918
         self.avog = 6.022*10**23
-        self.molarMass = 18 
         #
         # Set up domain
         self.voxelSize = voxelSize
@@ -100,7 +100,7 @@ The sample was originally extracted from a scanned specimen using a buffer layer
 We now show the main script in `singlePhase.py`.
 The script first runs isthmus' main routine `marchingWindows` to generate an initial surface mesh from the sample, including faces and vertices.
 This is exported and saved as `grids/grid_0.stl`.
-Then, the material recesses during seven steps in a loop.
+Then, the material recesses during three steps in a loop.
 
 ```python {file=singlePhase/singlePhase.py} 
 # If not added to the PYTHONPATH, uncomment bellow to add the ISTHMUS source directory.
@@ -160,6 +160,7 @@ case.clean()
 
 the function `runDSMC` is a placeholder for a step at which DSMC could be run.
 Instead, we read rates of CO formation from files `reactionFiles/surf_react_sparta_X.out`.
+If you are running DSMC yourself, issue the commands to execute the simulation here.
 
 ```python {file=singlePhase/utils.py}
     def runDSMC(self, step):
@@ -202,7 +203,7 @@ During this step, a voxel is removed if its mass has been totally removed by the
         # Calculate mass of carbon associated with each voxel
         volFracC = float(cVolFrac)
         volC = volFracC*(self.lims[1,0]-self.lims[0,0])*(self.lims[1,1]-self.lims[0,1])*(self.lims[1,2]-self.lims[0,2])
-        massC = volC*self.molarMass*100
+        massC = volC*self.sampleDensity
         massCVox = massC/len(voxs_alt)
         # 
         # Calculate the mass of carbon removed from each voxel

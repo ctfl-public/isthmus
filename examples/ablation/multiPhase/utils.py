@@ -21,13 +21,13 @@ class multiPhaseCase:
         height = 100
         buffer = 5
         voxelSize = 3.3757e-6  # in meters
+        self.couplingTime = 1
+        self.sampleDensity = 1800
         #
         # Timescale and some quantities for DSMC
-        self.couplingTime = 1
         self.timestepDSMC = 7.5e-9
         self.fnum = 14866.591116363918
         self.avog = 6.022*10**23
-        self.molarMass = 18
         #
         # Set up domain
         self.voxelSize = voxelSize

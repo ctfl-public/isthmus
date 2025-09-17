@@ -17,13 +17,13 @@ class ablationCase:
         height = 100
         buffer = 5
         voxelSize = 3.3757e-6
+        self.couplingTime = 100
+        self.sampleDensity = 1800
         #
         # Timescale and some quantities for DSMC
-        self.couplingTime = 100
         self.timestepDSMC = 7.5e-9
         self.fnum = 14866.591116363918
         self.avog = 6.022*10**23
-        self.molarMass = 18 
         #
         # Set up domain
         self.voxelSize = voxelSize
@@ -81,7 +81,7 @@ class ablationCase:
         # Calculate mass of carbon associated with each voxel
         volFracC = float(cVolFrac)
         volC = volFracC*(self.lims[1,0]-self.lims[0,0])*(self.lims[1,1]-self.lims[0,1])*(self.lims[1,2]-self.lims[0,2])
-        massC = volC*self.molarMass*100
+        massC = volC*self.sampleDensity
         massCVox = massC/len(voxs_alt)
         # 
         # Calculate the mass of carbon removed from each voxel
