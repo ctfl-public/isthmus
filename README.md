@@ -3,13 +3,12 @@
 </p>
 
 -----
-# ISTHMUS: The marching windows between voxels and surface mesh
-
-The purpose of Isthmus is **I**nterfacing **S**urface **T**riangles for **H**eterogenous **M**Ultiphysics **S**imulations, originally developed at University of Kentucky's [Computational Thermophysics and Fluids Laboratory](https://ctfl.engr.uky.edu/) (CFTL).
-
-The program provides a bridge between voxelized geometries and their surface representations. While voxels and pixels are commonly used to approximate solid structures in imaging and simulations, voxelized surfaces fail to capture detailed geometry, creating challenges when modeling fluid flow around them. Isthmus introduces marching windows to generate accurate surface definitions for voxelized structures and consistently transfer fluxes between the surface mesh and voxels.
+# ISTHMUS: **I**nterfacing **S**urface **T**riangles for **H**eterogenous **MU**ltiphysics **S**imulations
+Isthmus, originally developed at the [Computational Thermophysics and Fluids Laboratory](https://ctfl.engr.uky.edu/) (CFTL) of University of Kentucky, provides a bridge between voxelized geometries and their surface representations. While voxels and pixels are commonly used to approximate solid structures in imaging and simulations, voxelized surfaces fail to capture curved interfaces, creating challenges when modeling fluid flow around them. Isthmus introduces **Marching Windows**, a method to generate accurate surface definitions for voxelized structures and consistently transfer fluxes between the surface mesh and voxels.
 
 Isthmus is built for multiphysics simulations involving voxelized solids immersed in fluids, making it especially useful for problems such as fluid–structure interaction and thermochemical material response.
+
+For examples of the capabilities of Isthmus, see the tutorials located in the `examples/` directory.
 
 ## License
 
@@ -47,7 +46,7 @@ An `envs/requirements_wout_gpu.txt` file is provided for pip installation, but u
 To work with Isthmus, using `conda` is higly recommended to leapfrog the packages dependency headache. To test whether it is installed, run `conda --version` from terminal to check the current version. If not, conda can be installed by following the instructions
 [here](https://docs.anaconda.com/anaconda/install/index.html).
 
-> **Note:** Using HPC, load conda module using your administrator guidelines, for example, in LCC (Lipscomb Compute Cluster) use: 
+> **Note:** Using HPC, load conda module using your administrator guidelines, for example, on University of Kentucky's Lipscomb Compute Cluster (LCC) use: 
 > ```bash
 > module load ccs/anaconda/3
 > ```
@@ -64,7 +63,7 @@ conda env create -p </path/to/your_env_name> -f envs/environment.yml
 > | Environment File | Description |
 > |------------------|-------------|
 > | `environment.yml` | Complete environment that contains cudatoolkit, numba, cython, and marching cubes dependencies. |
-> | `environment_LCC.yml` | Build for LCC (Lipscomb Compute Cluster), without driver and cudatoolkit. Use `module load ccs/cuda/12.2.0_535.54.03` instead. |
+> | `environment_LCC.yml` | Build for LCC, without driver and cudatoolkit. Use `module load ccs/cuda/12.2.0_535.54.03` instead. |
 > | `environment_wout_gpu.yml` | Environment with only cython and marching cubes dependencies. Does not run with GPU acceleration. |
 
 #### Activate environment:
@@ -99,7 +98,7 @@ Or
 
 Or
 
-* If using the UKY LCC (University of Kentucky Lipscomb Compute Cluster). Use `environment_LCC.yml` and load the cuda module using, 
+* If running on LCC use `environment_LCC.yml` and load the cuda module using, 
     ```bash
     module load ccs/cuda/12.2.0_535.54.03
     ```
