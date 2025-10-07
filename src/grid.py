@@ -586,12 +586,12 @@ class Corner_Grid(Grid):
     ## @defgroup Associators
     ## @{
     def associate_voxels(self, vox_grid):
-        voxels = vox_grid.voxels
         i = 0
-        for v in voxels:
+        weighted_voxs = [vox for vox in vox_grid.voxels if vox.weight > 1e-6]
+        for v in weighted_voxs:
              ind = (np.rint(((v.position - self.lims[0])/self.cell_length))).astype(int) # x,y,z corner indices
              self.corners[self.get_element(ind)].voxels.append(v)
-             progress_bar(i+1, len(voxels), 'assigning voxels to corners')
+             progress_bar(i+1, len(weighted_voxs), 'assigning voxels to corners')
              i += 1
         self.divide_volumes() # divide volumes between corners
     ## @}
@@ -614,8 +614,7 @@ class Corner_Grid(Grid):
 
         for i in range(len(self.corners)):
             c = self.corners[i]
-            weighted_voxs = [vox for vox in c.voxels if vox.weight > 1e-6]
-            for v in weighted_voxs:
+            for v in c.voxels:
                 displ = v.position - c.position
                 dist = np.array([abs(x) for x in displ])
                 if all(dist < max_unique_dist):
