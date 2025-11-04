@@ -65,7 +65,7 @@ class marchingWindows:
         Voxel.size = Voxel2D.size = voxel_size
 
         # organize voxels and divide volumes among grid corners
-        self.vox_grid = self.sort_voxels(voxels)
+        self.vox_grid = self.sort_voxels(voxels, ncells)
         self.surface_voxels = self.weight_voxels(lims, ncells)
         self.corner_grid = Corner_Grid(lims, ncells + 1, self.vox_grid)
 
@@ -146,12 +146,19 @@ class marchingWindows:
             raise Exception("Insufficient buffer added to marching windows grid for voxel set")
     
     # vox_cs are [[x1,y1,z1], [x2,y2,z2],...] of centroids
-    def sort_voxels(self, vox_cs):
+    def sort_voxels(self, vox_cs, ncells):
         # initialize voxels and limits of voxel grid to be used
+        cell_length = max((self.grid_lims[1] - self.grid_lims[0])/ncells) # length of cell in [x,y,z] directions
+        cv_ratio = cell_length/Voxel.size
+        buffer = np.ceil((3*cv_ratio/2) + 0.5)*Voxel.size
+        vox_xs = np.transpose(vox_cs)
         first_vox = vox_cs[0]
-        nvoxs = np.ceil((first_vox - self.grid_lims[0])/Voxel.size)
+        xlo = [min(x) - 2*buffer for x in vox_xs]
+        xhi = [max(x) + 2*buffer for x in vox_xs]
+
+        nvoxs = np.ceil((first_vox - xlo)/Voxel.size)
         vcx_lo = first_vox - nvoxs*Voxel.size
-        nvoxs += np.ceil((self.grid_lims[1] - first_vox)/Voxel.size)
+        nvoxs += np.ceil((xhi - first_vox)/Voxel.size)
         vcx_hi = vcx_lo + nvoxs*Voxel.size
         nvoxs = (nvoxs).astype(int) + 1
         
