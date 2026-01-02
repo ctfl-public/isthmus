@@ -3,18 +3,20 @@ from numba import cuda, float32
 import math
 
 def get_intersection_area_gpu(proj_faces, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon):
-    proj_faces_gpu = cuda.to_device(np.array(proj_faces, dtype=np.float32))
-    tri_normal_gpu = cuda.to_device(np.array(tri_normal, dtype=np.float32))
-    tri_plane_normal_gpu = cuda.to_device(np.array(tri_plane_normal, dtype=np.float32))
-    tri_vertices_gpu = cuda.to_device(np.array(tri_vertices, dtype=np.float32))
-    tri_epsilon_gpu = cuda.to_device(np.array(tri_epsilon, dtype=np.float32))
+    M = proj_faces.shape[0] # number of projected faces
+    
+    proj_faces_gpu       = cuda.to_device(proj_faces)
+    tri_normal_gpu       = cuda.to_device(tri_normal)
+    tri_plane_normal_gpu = cuda.to_device(tri_plane_normal)
+    tri_vertices_gpu     = cuda.to_device(tri_vertices)
+    tri_epsilon_gpu      = cuda.to_device(tri_epsilon)
 
     threads_per_block = 256  # Tuned for GPU efficiency
-    blocks_per_grid = min((len(proj_faces) + threads_per_block - 1) // threads_per_block, 1024)
+    blocks_per_grid = min((M + threads_per_block - 1) // threads_per_block, 1024)
 
-    clipped_pts = cuda.device_array((len(proj_faces), 7, 3), dtype=np.float32)  # clipped polygon vertices, max 6 vertices
-    n_clipped_pts = cuda.device_array((len(proj_faces)), dtype=np.int32) # number of vertices for each clipped polygon
-    areas_gpu = cuda.device_array(len(proj_faces), dtype=np.float32)
+    clipped_pts = cuda.device_array((M, 7, 3), dtype=np.float32)  # clipped polygon vertices, max 6 vertices
+    n_clipped_pts = cuda.device_array(M, dtype=np.int32) # number of vertices for each clipped polygon
+    areas_gpu = cuda.device_array(M, dtype=np.float32)
 
     get_intersection_area_kernel[blocks_per_grid, threads_per_block](
         proj_faces_gpu, tri_normal_gpu, tri_plane_normal_gpu, tri_vertices_gpu, tri_epsilon_gpu, 
@@ -27,8 +29,9 @@ def get_intersection_area_gpu(proj_faces, tri_normal, tri_plane_normal, tri_vert
 def get_intersection_area_kernel(proj_faces, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon, clipped_pts, n_clipped_pts, areas):
     i = cuda.grid(1)
     stride = cuda.gridsize(1)
+    M = proj_faces.shape[0]
 
-    for idx in range(i, len(proj_faces), stride):
+    for idx in range(i, M, stride):
         clip_sh_gpu(proj_faces[idx], tri_plane_normal[idx], tri_vertices[idx], tri_epsilon[idx], clipped_pts, n_clipped_pts, idx)
 
         has_points = n_clipped_pts[idx] > 2

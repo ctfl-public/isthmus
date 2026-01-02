@@ -721,17 +721,41 @@ class Cell_Grid(Grid):
                     for vox in c_voxels[-1]:
                         for f in vox.faces:
                             if (f.exposed) and (np.dot(f.n, t.normal) > 0):
-                                    proj_fs.append(np.array([f.xs[i] - t.normal*np.dot(t.normal, f.xs[i] - t.vertices[0]) for i in range(4)]))
-                                    tri_normal.append(t.normal)
-                                    tri_plane_normal.append(t.plane_normal)
-                                    tri_vertices.append(t.vertices)
+                                    xs = np.asarray(f.xs)            # (4,3)
+                                    n  = np.asarray(t.normal)        # (3,)
+                                    v0 = np.asarray(t.vertices[0])   # (3,)
+
+                                    # Signed distances of each face corner to the triangle plane.
+                                    # For each corner x: d = (x - v0)·n where (v0, n) define the plane.
+                                    # Shapes: (4,3) @ (3,) -> (4,)
+                                    d = (xs - v0) @ n
+
+                                    # Orthogonal projection of voxel face corners onto the triangle plane:
+                                    # x_proj = x - d*n (done in a vectorized way for 4 corners).
+                                    # Shapes: (4,1)*(1,3) broadcasts to (4,3)
+                                    proj = xs - d[:, None] * n[None, :]
+
+                                    proj_fs.append(proj)
+                                    tri_normal.append(n)
+                                    tri_plane_normal.append(np.asarray(t.plane_normal))
+                                    tri_vertices.append(np.asarray(t.vertices))
                                     tri_epsilon.append(t.epsilon)
 
         # Find area of overlap between projected faces and triangles
         # Use GPU or CPU version based on the flag
         if self.gpu:
             print("        Running get_intersection_area on GPU...")
-            v_areas = get_intersection_area_gpu(proj_fs, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon)
+
+            # Pack lists -> single big arrays ONCE (and ensure float32 contiguous)
+            # ascontiguousarray ensures the data is stored linearly in memory (good for H2D copy + coalescing).
+            proj_fs          = np.ascontiguousarray(np.stack(proj_fs), dtype=np.float32)          # (M,4,3)
+            tri_normal       = np.ascontiguousarray(np.stack(tri_normal), dtype=np.float32)       # (M,3)
+            tri_plane_normal = np.ascontiguousarray(np.stack(tri_plane_normal), dtype=np.float32) # (M,3,3)
+            tri_vertices     = np.ascontiguousarray(np.stack(tri_vertices), dtype=np.float32)     # (M,3,3)
+            tri_epsilon      = np.ascontiguousarray(np.array(tri_epsilon), dtype=np.float32)      # (M,)
+
+            print(proj_fs.shape, proj_fs.dtype, proj_fs.flags['C_CONTIGUOUS']) # debug
+            v_areas = get_intersection_area_gpu(proj_fs, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon)        
         else:
             v_areas = get_intersection_area(proj_fs, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon)
 
