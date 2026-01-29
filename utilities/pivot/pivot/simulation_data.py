@@ -7,7 +7,7 @@ import os
 import logging
 log = logging.getLogger(__name__)
 
-from paraview_tools.config_manager import ConfigManager
+from pivot.config_manager import ConfigManager
 
 @dataclass
 class SimulationData:

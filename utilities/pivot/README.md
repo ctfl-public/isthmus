@@ -1,4 +1,4 @@
-# Data to ParaView Converter
+# Paraview INterface for Voxel and Surface OuTput (PIVOT)
 
 ## Description
 
@@ -17,15 +17,48 @@ Key features:
 
 ## Setup
 
-1. Copy the tools:
+### Method 1: Install as an Editable Package (Recommanded)
+
+1. Clone ISTHMUS (or pull if you already have it):
 
 ```bash
-cp -r /pscratch/sjpo228_uksr/RobbieHarper/ParaviewTools <your-destination-directory>
+git clone ssh://git@git-hypersonics.engr.uky.edu:2222/isthmus
 ```
 
-2. Install dependencies (Python $\geq$ 3.9 recommended)
+2. Go to `pivot` directory:
 ```bash
-pip install numpy pandas pyvista tqdm tomli 
+cd isthmus/utilities/pivot
+```
+
+3. Initialize your virtual environment
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+4. Install the package in editable mode:
+```bash
+pip install -e . 
+```
+
+1. Now you can run anywhere (in your python environment) using 
+```bash
+pivot <config_file> 
+```
+
+Where `config_file` is the name of your config file. More details on how to write the config file are in the configuration section.
+
+### Method 2: Manual Installation (alternative)
+
+1. Clone ISTHMUS (or pull if you already have it):
+
+```bash
+git clone ssh://git@git-hypersonics.engr.uky.edu:2222/isthmus
+```
+
+2. Install dependencies (3.9 < Python < 3.12)
+```bash
+pip install numpy pandas pyvista tqdm tomli
 ```
 
 ---
@@ -89,13 +122,13 @@ sync_enabled = true
 
 ### Full conversion + postprocessing (default)
 ```bash
-python main.py
+pivot <config_file>
 ```
 
 ### Postprocessing only
 Generate synced PVDs or achive output without reprocessing the simulation data:
 ```bash
-python main.py --postprocessing=ON
+pivot <config_file> --postprocessing=ON
 ```
 
 > [!NOTE]
@@ -104,9 +137,9 @@ python main.py --postprocessing=ON
 ### Adjust logging
 Control the verbosity of the console and log file output (`paraview_tools.log`):
 ```bash
-python main.py --logging=DEBUG # developer-level messages
-python main.py --logging=INFO # default user-level messages
-python main.py --logging=WARNING # only warnings and errors
+pivot <config_file> --logging=DEBUG # developer-level messages
+pivot <config_file> --logging=INFO # default user-level messages
+pivot <config_file> --logging=WARNING # only warnings and errors
 ```
 
 

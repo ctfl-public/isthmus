@@ -1,5 +1,5 @@
-from paraview_tools.config_manager import ConfigManager
-from paraview_tools.simulation_data import SimulationData
+from pivot.config_manager import ConfigManager
+from pivot.simulation_data import SimulationData
 import sys
 from pathlib import Path
 

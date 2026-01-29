@@ -8,10 +8,10 @@ import logging
 log = logging.getLogger(__name__)
 
 # custom modules
-from paraview_tools.config_manager import ConfigManager
-from paraview_tools.simulation_data import SimulationData
-from paraview_tools.base_converter import BaseConverter
-from paraview_tools.sparta_items import SpartaItems
+from pivot.config_manager import ConfigManager
+from pivot.simulation_data import SimulationData
+from pivot.base_converter import BaseConverter
+from pivot.sparta_items import SpartaItems
 
 class SurfaceConverter(BaseConverter):
     """Converts SPARTA surface data to VTK PolyData."""

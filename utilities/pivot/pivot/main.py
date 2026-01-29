@@ -1,9 +1,9 @@
-from paraview_tools.config_manager import ConfigManager
-from paraview_tools.flow_converter import FlowConverter
-from paraview_tools.surface_converter import SurfaceConverter
-from paraview_tools.solid_converter import SolidConverter
-from paraview_tools.simulation_data import SimulationData
-from paraview_tools.archive import archiveOutputs
+from pivot.config_manager import ConfigManager
+from pivot.flow_converter import FlowConverter
+from pivot.surface_converter import SurfaceConverter
+from pivot.solid_converter import SolidConverter
+from pivot.simulation_data import SimulationData
+from pivot.archive import archiveOutputs
 
 import time
 from typing import Optional, List
@@ -39,15 +39,25 @@ def parseArgs() -> argparse.ArgumentParser:
     return parser.parse_args()
 
 def setupLogging(level=logging.INFO):
+    # File handler - everything
+    file_handler = logging.FileHandler("pivot.log")
+    file_handler.setLevel(level)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(levelname)-8s | %(name)s | %(message)s", 
+                         datefmt="%H:%M:%S")
+    )
+    
+    # Console handler - clean, simple messages
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(level)
+    console_handler.setFormatter(
+        logging.Formatter("%(message)s")  # Just the message, no timestamp/level
+    )
+    
     logging.basicConfig(
-            level=level,
-            format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-            datefmt="%H:%M:%S",
-            handlers=[
-                logging.StreamHandler(sys.stdout),
-                logging.FileHandler("paraview_tools.log")
-            ]
-        )
+        level=level,
+        handlers=[console_handler, file_handler]
+    )
 
 def runFlow(fc : FlowConverter):
     fc.processFlowDirectory()
@@ -180,7 +190,7 @@ def main():
     log = logging.getLogger(__name__)
     
     log.info("=" * 60)
-    log.info("Paraview Tools")
+    log.info("Paraview INterface for Voxel and Surface OuTput (PIVOT)")
     log.info(
         "If you encounter any errors you don’t understand, "
         "please contact Savio Poovathingal or Robbie Harper for assistance."

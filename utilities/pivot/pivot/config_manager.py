@@ -1,5 +1,5 @@
 import sys
-from paraview_tools.configs import FlowConfig, SurfaceConfig, SolidConfig, PostprocessConfig
+from pivot.configs import FlowConfig, SurfaceConfig, SolidConfig, PostprocessConfig
 import logging
 log = logging.getLogger(__name__)
 
