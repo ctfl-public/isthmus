@@ -154,3 +154,6 @@ pivot <config_file> --logging=WARNING # only warnings and errors
 - `.vtu` files are used for flow and solid data; `.vtp` files are used for surface data
 - You do **not** need to re-run the processing to generate a synced PVD.
 - Synced PVD (`synced.pvd`) uses **relative paths** to the solver output directories, so it can be opened directly in ParaView without moving files.
+
+### Contacts
+Contact Savio Poovathingal `savio.poovathingal@uky.edu` or Robbie Harper `robbie.harper@uky.edu` for any issues. 
