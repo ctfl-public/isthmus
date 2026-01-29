@@ -1,0 +1,14 @@
+.venv
+test_data/
+*_output/
+__pycache__
+*.tar.gz
+solid_data
+*.pvd
+*.zip
+*.log
+# doxygen output
+Doxyfile
+html/
+latex/
+paraview_tools.egg-info
