@@ -22,7 +22,7 @@ Key features:
 1. Clone ISTHMUS (or pull if you already have it):
 
 ```bash
-git clone ssh://git@git-hypersonics.engr.uky.edu:2222/isthmus
+git clone https://github.com/ctfl-public/isthmus
 ```
 
 2. Go to `pivot` directory:
