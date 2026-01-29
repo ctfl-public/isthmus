@@ -1,0 +1,18 @@
+[flow]
+flow_dir = "/Users/robbieharper/ctfl_code/new_sim_data/flow_folder"
+flow_dt = 0.0
+
+[surface]
+surf_data_dir = "/Users/robbieharper/ctfl_code/new_sim_data/surf_data_folder"
+surf_geom_dir = "/Users/robbieharper/ctfl_code/new_sim_data/surf_geom_folder"
+surface_dt = 0.0
+
+[solid]
+solid_dir = "/Users/robbieharper/ctfl_code/new_sim_data/solid_folder"
+solid_dt = 0.0
+voxel_size = 7.0e-8
+
+
+[postprocess]
+archive = true
+sync_enabled = true
