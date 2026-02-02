@@ -70,13 +70,13 @@ class SolidConverter(BaseConverter):
 
         for i, line in enumerate(lines):
             line = line.strip()
-            if line == "ITEM: ACCUMULATED TIMESTEPS":
+            if line == "ITEM: SOLID TIMESTEP":
                 # this timestep doesn't reset / is global 
                 try:
                     accumulated_timestep = int(lines[i + 1].strip())
                 except (IndexError, ValueError):
                     raise ValueError(
-                    f"{filepath}: 'ITEM: ACCUMULATED TIMESTEPS' "
+                    f"{filepath}: 'ITEM: SOLID TIMESTEP' "
                     "must be followed by an integer value.")
                 csv_start_idx = i + 2
                 break
@@ -84,7 +84,7 @@ class SolidConverter(BaseConverter):
         if accumulated_timestep is None:
             raise ValueError(
                 f"{filepath}: Missing required header "
-                "'ITEM: ACCUMULATED TIMESTEPS'."
+                "'ITEM: SOLID TIMESTEP'."
             )
         
         if csv_start_idx is None:
