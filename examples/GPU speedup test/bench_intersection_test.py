@@ -13,6 +13,9 @@ Usage:
   python bench_intersection_test.py --max-mem-gb 8  # skip cases estimated > 8 GB RAM
 """
 
+import numpy as np
+from geometry import get_intersection_area
+from geometry_gpu import get_intersection_area_gpu_profiler
 import argparse
 import csv
 import math
@@ -20,19 +23,41 @@ import os
 import sys
 import time
 from dataclasses import dataclass
-from intersection_test import test
 import matplotlib.pyplot as plt
+from numba import cuda
 
 
 @dataclass
 class RunResult:
     n: int
     cpu_time: float
-    gpu_time: float
-    speedup: float
+    gpu_call_time: float          # end-to-end time of Python call (includes host array creation)
+    gpu_h2d_s: float              # measured inside geometry_gpu (H->D copies)
+    gpu_alloc_s: float            # device allocations inside geometry_gpu
+    gpu_kernel_ms: float          # kernel time from CUDA events
+    gpu_d2h_s: float              # measured inside geometry_gpu (D->H copy)
+    gpu_total_s: float            # h2d + alloc + kernel + d2h (inside geometry_gpu)
+    speedup: float                # CPU_time / gpu_call_time (or choose /gpu_total_s)
     cpu_ok: bool
     gpu_ok: bool
     note: str = ""
+
+
+def test_routine(n=1, gpu=False):
+    proj_faces = np.tile(np.array([[[0, 0, 0], [2, 0, 0], [2, 2, 0], [0, 2, 0]]], dtype=np.float32), (n, 1, 1))
+    tri_normal = np.tile(np.array([[0, 0, 1]], dtype=np.float32), (n, 1))
+    tri_plane_normal = np.tile(np.array([[[-1, 0, 0], [0, -1, 0], [1/np.sqrt(2), 1/np.sqrt(2), 0]]], dtype=np.float32), (n, 1, 1))
+    tri_vertices = np.tile(np.array([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]], dtype=np.float32), (n, 1, 1))
+    tri_epsilon = np.full((n,), 1e-6, dtype=np.float32)
+
+    if gpu:
+        computed_area, prof = get_intersection_area_gpu_profiler(proj_faces, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon)
+        return computed_area, prof
+    else:
+        computed_area = get_intersection_area(proj_faces, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon)
+        return computed_area, None
+
+
 
 
 def estimate_bytes_for_n(n: int) -> int:
@@ -59,7 +84,7 @@ def fmt_bytes(num):
     return f"{num:.2f} PB"
 
 
-def time_once(n: int, gpu: bool, timeout: float = None) -> tuple[bool, float, str]:
+def time_once(n: int, gpu: bool) -> tuple[bool, float, str]:
     """
     Time a single call to test(n, gpu=...).
     Returns: (ok, elapsed_sec or None, note)
@@ -67,12 +92,32 @@ def time_once(n: int, gpu: bool, timeout: float = None) -> tuple[bool, float, st
     t0 = time.perf_counter()
     try:
         # Optionally allow a crude timeout by polling time in a loop (simple approach).
-        # Here we just execute directly; if you need hard timeouts, use multiprocessing.
-        test(n=n, gpu=gpu)
+        test_routine(n=n, gpu=gpu)
         elapsed = time.perf_counter() - t0
         return True, elapsed, ""
     except Exception as e:
         return False, None, f"{type(e).__name__}: {e}"
+    
+def time_once_gpu_profiled(n: int) -> tuple[bool, float, dict, str]:
+    """
+    Times a single GPU run and returns:
+      (ok, gpu_call_elapsed_s, prof_dict, note)
+    gpu_call_elapsed_s: full Python call time (includes host array creation in intersection_test)
+    prof_dict: {'h2d_s','alloc_s','kernel_ms','d2h_s','total_s'} from geometry_gpu
+    """
+    try:
+        # Warm GPU sync before starting
+        cuda.synchronize()
+        t0 = time.perf_counter()
+
+        _, prof = test_routine(n=n, gpu=True)
+
+        # prof["total_s"] already includes syncs inside geometry_gpu.py
+        elapsed = time.perf_counter() - t0
+        # elapsed includes host array creation + function overhead; prof["total_s"] is inside get_intersection_area_gpu()
+        return True, elapsed, prof, ""
+    except Exception as e:
+        return False, None, {}, f"{type(e).__name__}: {e}"
 
 
 def median(vals):
@@ -105,7 +150,7 @@ def main():
     # Warmup GPU once (helps JIT/first allocation)
     if args.warmup_n > 0:
         print(f"[warmup] GPU warmup with n={args.warmup_n}")
-        ok, t, note = time_once(args.warmup_n, gpu=True)
+        ok, t, prof, note = time_once_gpu_profiled(n=args.warmup_n)
         if ok:
             print(f"[warmup] GPU warmup done in {t:.4f} s")
         else:
@@ -146,40 +191,76 @@ def main():
 
         # GPU timing
         gpu_times = []
+        gpu_h2d = []
+        gpu_alloc = []
+        gpu_kernel_ms = []
+        gpu_d2h = []
+        gpu_total = []
         gpu_note = ""
         gpu_ok = True
         for r in range(args.repeats):
-            ok, t, note = time_once(n, gpu=True)
+            ok, t, prof, note = time_once_gpu_profiled(n)
             if not ok:
                 gpu_ok = False
                 gpu_note = note
                 break
             gpu_times.append(t)
             print(f"  GPU run {r+1}/{args.repeats}: {t:.4f} s")
+            gpu_h2d.append(prof.get("h2d_s", float("nan")))
+            gpu_alloc.append(prof.get("alloc_s", float("nan")))
+            gpu_kernel_ms.append(prof.get("kernel_ms", float("nan")))
+            gpu_d2h.append(prof.get("d2h_s", float("nan")))
+            gpu_total.append(prof.get("total_s", float("nan")))
 
-        gpu_time = median(gpu_times) if gpu_ok else None
         if gpu_ok:
-            print(f"  GPU median: {gpu_time:.4f} s")
+            gpu_call_time = sorted(gpu_times)[len(gpu_times)//2]
+            gpu_h2d_s     = sorted(gpu_h2d)[len(gpu_h2d)//2]
+            gpu_alloc_s   = sorted(gpu_alloc)[len(gpu_alloc)//2]
+            gpu_kernel    = sorted(gpu_kernel_ms)[len(gpu_kernel_ms)//2]
+            gpu_d2h_s     = sorted(gpu_d2h)[len(gpu_d2h)//2]
+            gpu_total_s   = sorted(gpu_total)[len(gpu_total)//2]
+        else:
+            gpu_call_time = gpu_h2d_s = gpu_alloc_s = gpu_kernel = gpu_d2h_s = gpu_total_s = None
+
+        if gpu_ok:
+            print(f"  GPU median: {gpu_call_time:.4f} s")
         else:
             print(f"  GPU FAILED: {gpu_note}")
 
-        speed = (cpu_time / gpu_time) if (cpu_ok and gpu_ok and gpu_time and gpu_time > 0) else None
+        speed = (cpu_time / gpu_call_time) if (cpu_ok and gpu_ok and gpu_call_time and gpu_call_time > 0) else None
         note_parts = []
         if not cpu_ok:
             note_parts.append(f"CPU error: {cpu_note}")
         if not gpu_ok:
             note_parts.append(f"GPU error: {gpu_note}")
-        results.append(RunResult(n=n, cpu_time=cpu_time, gpu_time=gpu_time, speedup=speed,
-                                 cpu_ok=cpu_ok, gpu_ok=gpu_ok, note=" | ".join(note_parts)))
+        results.append(RunResult(
+            n=n,
+            cpu_time=cpu_time,
+            gpu_call_time=gpu_call_time,
+            gpu_h2d_s=gpu_h2d_s,
+            gpu_alloc_s=gpu_alloc_s,
+            gpu_kernel_ms=gpu_kernel,
+            gpu_d2h_s=gpu_d2h_s,
+            gpu_total_s=gpu_total_s,
+            speedup=speed,
+            cpu_ok=cpu_ok,
+            gpu_ok=gpu_ok,
+            note=" | ".join(note_parts),
+        ))
 
     # Save CSV
     csv_path = f"{args.out_prefix}_results.csv"
     with open(csv_path, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["n", "cpu_time_s", "gpu_time_s", "speedup_cpu_over_gpu", "cpu_ok", "gpu_ok", "note"])
+        w.writerow(["n", "cpu_time_s", "gpu_time_s", "gpu_h2d_s", "gpu_alloc_s", "gpu_kernel_ms", "gpu_d2h_s", "gpu_total_s", "speedup_cpu_over_gpu", "cpu_ok", "gpu_ok", "note"])
         for r in results:
             w.writerow([r.n, r.cpu_time if r.cpu_time is not None else "",
-                        r.gpu_time if r.gpu_time is not None else "",
+                        r.gpu_call_time if r.gpu_call_time is not None else "",
+                        r.gpu_h2d_s if r.gpu_h2d_s is not None else "",
+                        r.gpu_alloc_s if r.gpu_alloc_s is not None else "",
+                        r.gpu_kernel_ms if r.gpu_kernel_ms is not None else "",
+                        r.gpu_d2h_s if r.gpu_d2h_s is not None else "",
+                        r.gpu_total_s if r.gpu_total_s is not None else "",
                         r.speedup if r.speedup is not None else "",
                         int(r.cpu_ok), int(r.gpu_ok), r.note])
     print(f"\nSaved results to {csv_path}")
