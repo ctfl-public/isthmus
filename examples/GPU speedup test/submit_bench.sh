@@ -1,8 +1,9 @@
 #!/bin/bash
 #SBATCH -t 1-0:00:00 # hours, min, sec
 #SBATCH --job-name=gpu_perf_test
-#SBATCH --ntasks=16                      # Number of cores needed for the job
-#SBATCH --gres=gpu:1               # Request 1 GPU
+#SBATCH --ntasks=1              # Number of processes
+#SBATCH --cpus-per-task=1       # Number of CPU cores per process
+#SBATCH --gres=gpu:1            # Request 1 GPU
 #SBATCH --partition=V4V32_CAS40M192_L     # Partition/queue to run the job in. (REQUIRED)
 #SBATCH -e slurm-%j.err  # Error file for this job.
 #SBATCH -o slurm-%j.out  # Output file for this job.
