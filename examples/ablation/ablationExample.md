@@ -12,6 +12,11 @@ Voxels are pure carbon, and remaining unoccupied space is air.
 - **Sample 2:** An imitation of differential ablation where the scanned voxels are the composite carbon matrix and the remaining space is fiber.
 We emphasize that the matrix component of this case does not resemble a realistic carbon/carbon composite material.
 
+These cases provide a gauge for a typical amount of mass loss when running ISTHMUS, and each script prints the percentage of mass which was lost during an iteration of ISTHMUS.
+Each time ISTHMUS attempts to form a surface triangle with nonzero surface area, the script prints a warning for the user.
+Both cases use microstructures which were scanned using X-ray computed tomography (XRCT).
+The inputs that load the samples are `.tiff` files which depict a layer-by-layer three-dimensional structure which is converted to voxels.
+
 **Note:** It is recommended to run this example case using an HPC system, as the sample contains about 3.6 million voxels.
 On a typical laptop or desktop machine, completion may take around 1-2 hours.
 
@@ -177,6 +182,8 @@ If you are running DSMC yourself, issue the commands to execute the simulation h
 
 The function `ablate` recesses the material based on the mass of CO formed at each surface triangle.
 During this step, a voxel is removed if its mass has been totally removed by the reaction.
+During each call to this function, the amount of mass loss during the step is printed.
+For this single phase case, ISTHMUS failed to construct a triangle with nonzero surface area for 4 out of approximately 550,000 surface triangles during the three iterations of this function, resulting in a maximum of about $4.53\times 10^{-4}$% mass loss during one step.
 
 ```python {file=singlePhase/utils.py}
     def ablate(self, step):
@@ -208,11 +215,16 @@ During this step, a voxel is removed if its mass has been totally removed by the
         # 
         # Calculate the mass of carbon removed from each voxel
         cRemovedVox = np.zeros((len(voxs_alt)))
+        trianglesum = 0
+        voxelsum = 0
         for i in range(len(self.COFormed)):
+            trianglesum += self.COFormed[i,1]
             vox_no = np.array((tri_voxs[(i+1)]),dtype = int)
             sfracs = np.array((tri_sfracs[(i+1)]),dtype = float)
             for k in range(len(vox_no)):
                 cRemovedVox[vox_no[k]] = cRemovedVox[vox_no[k]] + sfracs[k] * self.COFormed[i,1]
+                voxelsum += sfracs[k] * self.COFormed[i,1]
+        print('Mass conservation error: {:.12e}%'.format(100*(trianglesum - voxelsum)/trianglesum))
         cRemovedVox[:] = cRemovedVox[:] + voxs_alt[:,3]
         # 
         # Remove voxels
@@ -383,16 +395,23 @@ Within the `postProcess` function, we save the voxel types to a file so that the
 ### Multiphase Ablation
 
 During the ablation step in the `ablate` function, the two defined rates are accounted for.
-
+<!-- During each call to this function, the amount of mass loss during the step is printed. -->
+For this multiphase case, ISTHMUS successfully created surface triangles with nonzero surface area for all of the approximately 280,000 surface triangles.
+A mass conservation error is still printed which represents machine precision errors.
 ```python
         #
         # Calculate the mass of carbon removed from each voxel
         cRemovedVox = np.zeros((len(voxs_alt)))
+        trianglesum = 0
+        voxelsum = 0
         for i in range(len(self.COFormed)):
+            trianglesum += self.COFormed[i,1]
             vox_no = np.array((tri_voxs[(i+1)]),dtype = int)
             sfracs = np.array((tri_sfracs[(i+1)]),dtype = float)
             for k in range(len(vox_no)):
                 cRemovedVox[vox_no[k]] = cRemovedVox[vox_no[k]] + sfracs[k] * self.COFormed[i,1]
+                voxelsum += sfracs[k] * self.COFormed[i,1]
+        print('Mass conservation error: {:.12e}%'.format(100*(trianglesum - voxelsum)/trianglesum))
         cRemovedVox[:] = cRemovedVox[:] + voxs_alt[:,3]
         with open('voxel_data/types'+str(step-1)+'.dat', 'r') as file:
             self.voxs_types = json.load(file)

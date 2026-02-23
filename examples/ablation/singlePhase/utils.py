@@ -86,11 +86,16 @@ class ablationCase:
         # 
         # Calculate the mass of carbon removed from each voxel
         cRemovedVox = np.zeros((len(voxs_alt)))
+        trianglesum = 0
+        voxelsum = 0
         for i in range(len(self.COFormed)):
+            trianglesum += self.COFormed[i,1]
             vox_no = np.array((tri_voxs[(i+1)]),dtype = int)
             sfracs = np.array((tri_sfracs[(i+1)]),dtype = float)
             for k in range(len(vox_no)):
                 cRemovedVox[vox_no[k]] = cRemovedVox[vox_no[k]] + sfracs[k] * self.COFormed[i,1]
+                voxelsum += sfracs[k] * self.COFormed[i,1]
+        print('Mass conservation error: {:.12e}%'.format(100*(trianglesum - voxelsum)/trianglesum))
         cRemovedVox[:] = cRemovedVox[:] + voxs_alt[:,3]
         # 
         # Remove voxels
