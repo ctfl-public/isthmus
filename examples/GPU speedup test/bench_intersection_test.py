@@ -32,11 +32,15 @@ class RunResult:
     n: int
     cpu_time: float
     gpu_call_time: float          # end-to-end time of Python call (includes host array creation)
-    gpu_h2d_s: float              # measured inside geometry_gpu (H->D copies)
-    gpu_alloc_s: float            # device allocations inside geometry_gpu
-    gpu_kernel_ms: float          # kernel time from CUDA events
+    gpu_h2d_s: float           # measured inside geometry_gpu (H->D copies)
+    gpu_alloc_s: float           # device allocations inside geometry_gpu
+    gpu_kernel_ms: float         # kernel time from CUDA events (device-side)
+    gpu_kernel_submit_s: float    # host-side time to enqueue the kernel
+    gpu_kernel_call_s: float      # host-side enqueue + wait-for-completion
+    gpu_kernel_launch_overhead_s: float  # approx: kernel_call_s - kernel_ms
     gpu_d2h_s: float              # measured inside geometry_gpu (D->H copy)
-    gpu_total_s: float            # h2d + alloc + kernel + d2h (inside geometry_gpu)
+    gpu_total_s: float            # h2d + alloc + kernel_ms + d2h (inside geometry_gpu)
+    gpu_total_incl_launch_s: float  # h2d + alloc + kernel_call_s + d2h
     speedup: float                # CPU_time / gpu_call_time (or choose /gpu_total_s)
     cpu_ok: bool
     gpu_ok: bool
@@ -164,8 +168,24 @@ def main():
 
         if est_gb > args.max_mem_gb:
             print(f"[skip] n={n:,}: estimated memory {fmt_bytes(est_bytes)} exceeds --max-mem-gb={args.max_mem_gb} GB")
-            results.append(RunResult(n=n, cpu_time=None, gpu_time=None, speedup=None, cpu_ok=False, gpu_ok=False,
-                                     note=f"Skipped due to estimated memory {fmt_bytes(est_bytes)}"))
+            results.append(RunResult(
+                n=n,
+                cpu_time=None,
+                gpu_call_time=None,
+                gpu_h2d_s=None,
+                gpu_alloc_s=None,
+                gpu_kernel_ms=None,
+                gpu_kernel_submit_s=None,
+                gpu_kernel_call_s=None,
+                gpu_kernel_launch_overhead_s=None,
+                gpu_d2h_s=None,
+                gpu_total_s=None,
+                gpu_total_incl_launch_s=None,
+                speedup=None,
+                cpu_ok=False,
+                gpu_ok=False,
+                note=f"Skipped due to estimated memory {fmt_bytes(est_bytes)}",
+            ))
             continue
 
         print(f"\n=== n={n:,} | est. alloc ~ {fmt_bytes(est_bytes)} ===")
@@ -194,8 +214,12 @@ def main():
         gpu_h2d = []
         gpu_alloc = []
         gpu_kernel_ms = []
+        gpu_kernel_submit_s = []
+        gpu_kernel_call_s = []
+        gpu_kernel_launch_overhead_s = []
         gpu_d2h = []
         gpu_total = []
+        gpu_total_incl_launch = []
         gpu_note = ""
         gpu_ok = True
         for r in range(args.repeats):
@@ -209,18 +233,28 @@ def main():
             gpu_h2d.append(prof.get("h2d_s", float("nan")))
             gpu_alloc.append(prof.get("alloc_s", float("nan")))
             gpu_kernel_ms.append(prof.get("kernel_ms", float("nan")))
+            gpu_kernel_submit_s.append(prof.get("kernel_submit_s", float("nan")))
+            gpu_kernel_call_s.append(prof.get("kernel_call_s", float("nan")))
+            gpu_kernel_launch_overhead_s.append(prof.get("kernel_launch_overhead_s", float("nan")))
             gpu_d2h.append(prof.get("d2h_s", float("nan")))
             gpu_total.append(prof.get("total_s", float("nan")))
+            gpu_total_incl_launch.append(prof.get("total_incl_launch_s", float("nan")))
 
         if gpu_ok:
             gpu_call_time = sorted(gpu_times)[len(gpu_times)//2]
             gpu_h2d_s     = sorted(gpu_h2d)[len(gpu_h2d)//2]
             gpu_alloc_s   = sorted(gpu_alloc)[len(gpu_alloc)//2]
             gpu_kernel    = sorted(gpu_kernel_ms)[len(gpu_kernel_ms)//2]
+            gpu_k_submit  = sorted(gpu_kernel_submit_s)[len(gpu_kernel_submit_s)//2]
+            gpu_k_call    = sorted(gpu_kernel_call_s)[len(gpu_kernel_call_s)//2]
+            gpu_k_over    = sorted(gpu_kernel_launch_overhead_s)[len(gpu_kernel_launch_overhead_s)//2]
             gpu_d2h_s     = sorted(gpu_d2h)[len(gpu_d2h)//2]
             gpu_total_s   = sorted(gpu_total)[len(gpu_total)//2]
+            gpu_total_incl_launch_s = sorted(gpu_total_incl_launch)[len(gpu_total_incl_launch)//2]
         else:
-            gpu_call_time = gpu_h2d_s = gpu_alloc_s = gpu_kernel = gpu_d2h_s = gpu_total_s = None
+            gpu_call_time = gpu_h2d_s = gpu_alloc_s = gpu_kernel = None
+            gpu_k_submit = gpu_k_call = gpu_k_over = None
+            gpu_d2h_s = gpu_total_s = gpu_total_incl_launch_s = None
 
         if gpu_ok:
             print(f"  GPU median: {gpu_call_time:.4f} s")
@@ -240,8 +274,12 @@ def main():
             gpu_h2d_s=gpu_h2d_s,
             gpu_alloc_s=gpu_alloc_s,
             gpu_kernel_ms=gpu_kernel,
+            gpu_kernel_submit_s=gpu_k_submit,
+            gpu_kernel_call_s=gpu_k_call,
+            gpu_kernel_launch_overhead_s=gpu_k_over,
             gpu_d2h_s=gpu_d2h_s,
             gpu_total_s=gpu_total_s,
+            gpu_total_incl_launch_s=gpu_total_incl_launch_s,
             speedup=speed,
             cpu_ok=cpu_ok,
             gpu_ok=gpu_ok,
@@ -252,15 +290,36 @@ def main():
     csv_path = f"{args.out_prefix}_results.csv"
     with open(csv_path, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["n", "cpu_time_s", "gpu_time_s", "gpu_h2d_s", "gpu_alloc_s", "gpu_kernel_ms", "gpu_d2h_s", "gpu_total_s", "speedup_cpu_over_gpu", "cpu_ok", "gpu_ok", "note"])
+        w.writerow([
+            "n",
+            "cpu_time_s",
+            "gpu_time_s",
+            "gpu_h2d_s",
+            "gpu_alloc_s",
+            "gpu_kernel_ms",
+            "gpu_kernel_submit_s",
+            "gpu_kernel_call_s",
+            "gpu_kernel_launch_overhead_s",
+            "gpu_d2h_s",
+            "gpu_total_s",
+            "gpu_total_incl_launch_s",
+            "speedup_cpu_over_gpu",
+            "cpu_ok",
+            "gpu_ok",
+            "note",
+        ])
         for r in results:
             w.writerow([r.n, r.cpu_time if r.cpu_time is not None else "",
                         r.gpu_call_time if r.gpu_call_time is not None else "",
                         r.gpu_h2d_s if r.gpu_h2d_s is not None else "",
                         r.gpu_alloc_s if r.gpu_alloc_s is not None else "",
                         r.gpu_kernel_ms if r.gpu_kernel_ms is not None else "",
+                        r.gpu_kernel_submit_s if r.gpu_kernel_submit_s is not None else "",
+                        r.gpu_kernel_call_s if r.gpu_kernel_call_s is not None else "",
+                        r.gpu_kernel_launch_overhead_s if r.gpu_kernel_launch_overhead_s is not None else "",
                         r.gpu_d2h_s if r.gpu_d2h_s is not None else "",
                         r.gpu_total_s if r.gpu_total_s is not None else "",
+                        r.gpu_total_incl_launch_s if r.gpu_total_incl_launch_s is not None else "",
                         r.speedup if r.speedup is not None else "",
                         int(r.cpu_ok), int(r.gpu_ok), r.note])
     print(f"\nSaved results to {csv_path}")

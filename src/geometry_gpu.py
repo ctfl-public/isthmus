@@ -52,14 +52,27 @@ def get_intersection_area_gpu_profiler(
     stop_evt = cuda.event()
     start_evt.record()
 
+    t_kernel_submit0 = time.perf_counter()
+
     get_intersection_area_kernel[blocks_per_grid, threads_per_block](
         proj_faces_gpu, tri_normal_gpu, tri_plane_normal_gpu, tri_vertices_gpu, tri_epsilon_gpu,
         clipped_pts, n_clipped_pts, areas_gpu
     )
 
+    t_kernel_submit1 = time.perf_counter()
+
     stop_evt.record()
     stop_evt.synchronize()
+    t_kernel_done = time.perf_counter()
     prof["kernel_ms"] = cuda.event_elapsed_time(start_evt, stop_evt)
+
+    # Host-side timings: include Python/driver/kernel-launch overhead.
+    # - kernel_submit_s: time to enqueue the kernel from Python (no sync)
+    # - kernel_call_s: enqueue + wait-for-completion time (sync via stop_evt.synchronize)
+    # - kernel_launch_overhead_s: rough estimate of overhead beyond device execution time
+    prof["kernel_submit_s"] = t_kernel_submit1 - t_kernel_submit0
+    prof["kernel_call_s"] = t_kernel_done - t_kernel_submit0
+    prof["kernel_launch_overhead_s"] = max(prof["kernel_call_s"] - (prof["kernel_ms"] * 1e-3), 0.0)
 
     # --- D -> H transfer ---
     cuda.synchronize()
@@ -70,6 +83,7 @@ def get_intersection_area_gpu_profiler(
 
     # --- Total (for this function) ---
     prof["total_s"] = prof["h2d_s"] + prof["alloc_s"] + (prof["kernel_ms"] * 1e-3) + prof["d2h_s"]
+    prof["total_incl_launch_s"] = prof["h2d_s"] + prof["alloc_s"] + prof["kernel_call_s"] + prof["d2h_s"]
 
     return out_host, prof
 
