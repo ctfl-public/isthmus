@@ -33,7 +33,7 @@ Please also see `third-party-licenses/` for licensing information on bundled dep
 ## System Requirements
 
 - Memory needs scale with voxel grid size.
-- Optional GPU (Numba CUDA):
+- Optional GPU (Numba CUDA, does not work on MacOS):
     - NVIDIA GPU + driver compatible with the selected CUDA runtime
     - Numba/llvmlite pair (e.g., Numba ~0.55.1 with llvmlite ~0.38.0)
 
