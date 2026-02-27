@@ -4,11 +4,11 @@
 
 -----
 # ISTHMUS: **I**nterfacing **S**urface **T**riangles for **H**eterogenous **MU**ltiphysics **S**imulations
-Isthmus, originally developed at the [Computational Thermophysics and Fluids Laboratory](https://ctfl.engr.uky.edu/) (CFTL) of University of Kentucky, provides a bridge between voxelized geometries and their surface representations. While voxels and pixels are commonly used to approximate solid structures in imaging and simulations, voxelized surfaces fail to capture curved interfaces, creating challenges when modeling fluid flow around them. Isthmus introduces **Marching Windows**, a method to generate accurate surface definitions for voxelized structures and consistently transfer fluxes between the surface mesh and voxels.
+ISTHMUS, originally developed at the [Computational Thermophysics and Fluids Laboratory](https://ctfl.engr.uky.edu/) (CFTL) of University of Kentucky, provides a bridge between voxelized geometries and their surface representations. While voxels and pixels are commonly used to approximate solid structures in imaging and simulations, voxelized surfaces fail to capture curved interfaces, creating challenges when modeling fluid flow around them. Isthmus introduces **Marching Windows**, a method to generate accurate surface definitions for voxelized structures and consistently transfer fluxes between the surface mesh and voxels.
 
-Isthmus is built for multiphysics simulations involving voxelized solids immersed in fluids, making it especially useful for problems such as fluid–structure interaction and thermochemical material response.
+ISTHMUS is built for multiphysics simulations involving voxelized solids immersed in fluids, making it especially useful for problems such as fluid–structure interaction and thermochemical material response.
 
-For examples of the capabilities of Isthmus, see the tutorials located in the `examples/` directory.
+For examples of the capabilities of ISTHMUS, see the tutorials located in the `examples/` directory.
 
 ## License
 
@@ -23,11 +23,11 @@ Please also see `third-party-licenses/` for licensing information on bundled dep
         - [Create the Conda environment](#create-the-conda-environment)
         - [Activate environment](#activate-environment)
     - [Step 2: build marching cubes package](#step-2-build-marching-cubes-package)
-    - [Step 3: Add Isthmus to `PYTHONPATH`](#step-3-add-isthmus-to-pythonpath)
+    - [Step 3: Add ISTHMUS to `PYTHONPATH`](#step-3-add-isthmus-to-pythonpath)
     - [Step 4: using GPU acceleration with Numba (optional)](#step-4-using-gpu-acceleration-with-numba-optional)
         - [Set up CUDA Python](#set-up-cuda-python)
         - [Test Numba installation](#test-numba-installation)
-- [Isthmus test](#isthmus-test)
+- ISTHMUSIsthmus test](#isthmus-test)
 
 
 ## System Requirements
@@ -40,10 +40,11 @@ Please also see `third-party-licenses/` for licensing information on bundled dep
 ## Installation
 
 ### Step 1: build environment
-An `envs/requirements_wout_gpu.txt` file is provided for pip installation, but using `conda` is highly recommended to leapfrog the packages dependency headache, especially if using GPU acceleration. In insisting of not using conda, you need to install the `numba` package and its dependencies manually and solve any conflicts.
+To work with ISTHMUS, using `conda` (`miniconda` is fine too) along with the virtual environments shipped in the `envs` folder of this repository is highly recommended to avoid package dependency headaches.
+If insisting of not using conda, you need to install the `numba` package and its dependencies manually and solve any conflicts.
 
 #### Install conda
-To work with Isthmus, using `conda` is higly recommended to leapfrog the packages dependency headache. To test whether it is installed, run `conda --version` from terminal to check the current version. If not, conda can be installed by following the instructions
+To test whether it is installed, run `conda --version` from terminal to check the current version. If not, conda can be installed by following the instructions
 [here](https://docs.anaconda.com/anaconda/install/index.html).
 
 > **Note:** Using HPC, load conda module using your administrator guidelines, for example, on University of Kentucky's Lipscomb Compute Cluster (LCC) use: 
@@ -52,13 +53,13 @@ To work with Isthmus, using `conda` is higly recommended to leapfrog the package
 > ```
 
 #### Create the Conda environment:
-Create environment in conda default location using:
+To install the default virtual environment for ISTHMUS, run:
 ```bash
 conda env create -n <your_env_name> -f envs/environment.yml
 # or in custom location using:
 conda env create -p </path/to/your_env_name> -f envs/environment.yml
 ```
-> **Note:** Several Conda environment YAML files are located in the `envs` folder. Use `environment.yml` for complete environment to build Isthmus and utilize GPU acceleration using `Numba` and `CUDA`. Other environment files are listed in below table.
+> **Note:** Several Conda environment YAML files are located in the `envs` folder. Use `environment.yml` for complete environment to build ISTHMUS and utilize GPU acceleration using `Numba` and `CUDA`. Other environment files are listed in below table.
 > 
 > | Environment File | Description |
 > |------------------|-------------|
@@ -67,7 +68,7 @@ conda env create -p </path/to/your_env_name> -f envs/environment.yml
 > | `environment_wout_gpu.yml` | Environment with only cython and marching cubes dependencies. Does not run with GPU acceleration. |
 
 #### Activate environment:
-
+Once the environment is created, you can activate it for your current shell session by running:
 ```bash
 conda activate <your_env_name>
 # or 
@@ -75,12 +76,15 @@ conda activate </path/to/your_env_name>
 ```
 
 ### Step 2: build marching cubes package
-ISTHMUS package includes an open source build of marching cubes which must be compiled before moving forward. It needs these modules: `trimesh`, `lazy_loader`, `numpy`, `cython`, and `scipy`. They should be loaded within any conda environment defined in the above table. To compile, run the following from `src` directroy (Ignore the warnings).
+The ISTHMUS package includes an open source build of marching cubes which must be compiled before moving forward. 
+It needs these modules: `trimesh`, `lazy_loader`, `numpy`, `cython`, and `scipy`. 
+They should be loaded within any conda environment defined in the above table. 
+To compile, run the following from `src` directory.
 ```bash
 python -W ignore setup.py build_ext --inplace
 ```
 
-### Step 3: Add Isthmus to `PYTHONPATH`
+### Step 3: Add ISTHMUS to `PYTHONPATH`
 At the end of your `.bashrc`, add the path to `isthmus/src/` to your `PYTHONPATH` environment variable.
 ```bash
 export PYTHONPATH="/path/to/isthmus/src:$PYTHONPATH"
@@ -117,7 +121,7 @@ chmod +x check_numba_cuda.sh
 You should recieve a message contains `All checks passed ✅` at the end. 
 
 
-## Isthmus test
+## ISTHMUS test
 To confirm everything is working as expected, change directory to the `tests/` folder and type
 ```bash
 pytest -v
