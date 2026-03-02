@@ -1,6 +1,91 @@
 import numpy as np
 from numba import cuda, float32
 import math
+import time
+
+def get_intersection_area_gpu_profiler(
+    proj_faces, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon,
+    assume_device_inputs: bool = False,
+    ):
+    """
+    If assume_device_inputs=False: inputs are NumPy host arrays (will time H2D + kernel + D2H).
+    If assume_device_inputs=True: inputs are device arrays (will time kernel + D2H only).
+    """
+    prof = {}
+
+    M = proj_faces.shape[0]
+
+    # --- H -> D transfers (optional) ---
+    if not assume_device_inputs:
+        cuda.synchronize()
+        t0 = time.perf_counter()
+        proj_faces_gpu       = cuda.to_device(proj_faces)
+        tri_normal_gpu       = cuda.to_device(tri_normal)
+        tri_plane_normal_gpu = cuda.to_device(tri_plane_normal)
+        tri_vertices_gpu     = cuda.to_device(tri_vertices)
+        tri_epsilon_gpu      = cuda.to_device(tri_epsilon)
+        cuda.synchronize()
+        prof["h2d_s"] = time.perf_counter() - t0
+    else:
+        proj_faces_gpu       = proj_faces
+        tri_normal_gpu       = tri_normal
+        tri_plane_normal_gpu = tri_plane_normal
+        tri_vertices_gpu     = tri_vertices
+        tri_epsilon_gpu      = tri_epsilon
+        prof["h2d_s"] = 0.0
+
+    threads_per_block = 256
+    blocks_per_grid = min((M + threads_per_block - 1) // threads_per_block, 1024)
+
+    # --- GPU allocations ---
+    cuda.synchronize()
+    t_alloc = time.perf_counter()
+    clipped_pts = cuda.device_array((M, 7, 3), dtype=np.float32)
+    n_clipped_pts = cuda.device_array(M, dtype=np.int32)
+    areas_gpu = cuda.device_array(M, dtype=np.float32)
+    cuda.synchronize()
+    prof["alloc_s"] = time.perf_counter() - t_alloc
+
+    # --- Kernel launch + execution ---
+    # Use CUDA events for accurate device timing
+    start_evt = cuda.event()
+    stop_evt = cuda.event()
+    start_evt.record()
+
+    t_kernel_submit0 = time.perf_counter()
+
+    get_intersection_area_kernel[blocks_per_grid, threads_per_block](
+        proj_faces_gpu, tri_normal_gpu, tri_plane_normal_gpu, tri_vertices_gpu, tri_epsilon_gpu,
+        clipped_pts, n_clipped_pts, areas_gpu
+    )
+
+    t_kernel_submit1 = time.perf_counter()
+
+    stop_evt.record()
+    stop_evt.synchronize()
+    t_kernel_done = time.perf_counter()
+    prof["kernel_ms"] = cuda.event_elapsed_time(start_evt, stop_evt)
+
+    # Host-side timings: include Python/driver/kernel-launch overhead.
+    # - kernel_submit_s: time to enqueue the kernel from Python (no sync)
+    # - kernel_call_s: enqueue + wait-for-completion time (sync via stop_evt.synchronize)
+    # - kernel_launch_overhead_s: rough estimate of overhead beyond device execution time
+    prof["kernel_submit_s"] = t_kernel_submit1 - t_kernel_submit0
+    prof["kernel_call_s"] = t_kernel_done - t_kernel_submit0
+    prof["kernel_launch_overhead_s"] = max(prof["kernel_call_s"] - (prof["kernel_ms"] * 1e-3), 0.0)
+
+    # --- D -> H transfer ---
+    cuda.synchronize()
+    t1 = time.perf_counter()
+    out_host = areas_gpu.copy_to_host()
+    cuda.synchronize()
+    prof["d2h_s"] = time.perf_counter() - t1
+
+    # --- Total (for this function) ---
+    prof["total_s"] = prof["h2d_s"] + prof["alloc_s"] + (prof["kernel_ms"] * 1e-3) + prof["d2h_s"]
+    prof["total_incl_launch_s"] = prof["h2d_s"] + prof["alloc_s"] + prof["kernel_call_s"] + prof["d2h_s"]
+
+    return out_host, prof
 
 def get_intersection_area_gpu(proj_faces, tri_normal, tri_plane_normal, tri_vertices, tri_epsilon):
     M = proj_faces.shape[0] # number of projected faces
