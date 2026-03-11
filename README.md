@@ -31,6 +31,13 @@ Please also see `third-party-licenses/` for licensing information on bundled dep
 - [ISTHMUS test](#isthmus-test)
 - [Citing ISTHMUS](#citing-isthmus)
 
+## More
+* Feature requests and bugs can be raised on the [Github issue tracker](https://github.com/ctfl-public/isthmus/issues)
+* Marching windows [theory](doc/theory.md)
+* Technical [details](https://arxiv.org/abs/2603.07396) of the ISTHMUS algorithm
+* Introductory [tutorial](examples/ablation)
+* Verification [cases](V_and_V/fluxMapping)
+
 ## System Requirements
 
 - Memory needs scale with voxel grid size.
