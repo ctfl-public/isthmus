@@ -29,7 +29,7 @@ Please also see `third-party-licenses/` for licensing information on bundled dep
         - [Set up CUDA Python](#set-up-cuda-python)
         - [Test Numba installation](#test-numba-installation)
 - [ISTHMUS test](#isthmus-test)
-
+- [Citing ISTHMUS](#citing-isthmus)
 
 ## System Requirements
 
@@ -130,6 +130,37 @@ pytest -v
 You should recieve a message indicating that all tests have passed and no errors. If did not install CUDA Python environment, you will see the gpu tests skipped, which is fine.
 
 ---------
+
+## Citing ISTHMUS
+
+Please cite the following articles when mentioning ISTHMUS in your own papers.
+
+* Huff et al. [A Consistent Interface Reconstruction and Coupling Method for Multiphysics Simulations.](https://arxiv.org/abs/2603.07396) *ArXiv* 2026.
+* Yassin et al. ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations. *SoftwareX* 2026 (under review).
+<!-- * Yassin et al. [ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations.](SOFTWAREX LINK) *SoftwareX* 2026. -->
+
+**Bibtex**
+```bibtex
+@article{huff2026consistent,
+  title   = {A Consistent Interface Reconstruction and Coupling Method for Multiphysics Simulations},
+  author  = {Huff, Ethan and Poovathingal, Savio J.},
+  journal = {arXiv preprint},
+  year    = {2026},
+  doi     = {10.48550/arXiv.2603.07396},
+  archivePrefix = {arXiv},
+  primaryClass  = {physics.flu-dyn}
+}
+@article{yassin2026isthmus_REVIEW,
+  title   = {ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations},
+  author  = {Yassin, Ahmed H. and Huff, Ethan H. and Mohan Ramu, Vijay B. and Tacchi, Bruno and Am\`erico, Carlos E. and Stoffel, Tyler D. and Poovathingal, Savio J.},
+  journal = {SoftwareX},
+  volume  = {},
+  number  = {},
+  doi     = {},
+  year    = {2026},
+  note    = {{, under review}}
+  }
+```
 
 <!-- Source Files (./src)
 --------------------
