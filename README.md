@@ -28,7 +28,7 @@ Please also see `third-party-licenses/` for licensing information on bundled dep
     - [Step 4: using GPU acceleration with Numba (optional)](#step-4-using-gpu-acceleration-with-numba-optional)
         - [Set up CUDA Python](#set-up-cuda-python)
         - [Test Numba installation](#test-numba-installation)
-- ISTHMUSIsthmus test](#isthmus-test)
+- [ISTHMUS test](#isthmus-test)
 
 
 ## System Requirements
