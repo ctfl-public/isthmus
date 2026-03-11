@@ -9,6 +9,7 @@ ISTHMUS, originally developed at the [Computational Thermophysics and Fluids Lab
 ISTHMUS is built for multiphysics simulations involving voxelized solids immersed in fluids, making it especially useful for problems such as fluid–structure interaction and thermochemical material response.
 
 For examples of the capabilities of ISTHMUS, see the tutorials located in the `examples/` directory.
+The technical details of the algorithm implemented in ISTHMUS are presented in [this](https://arxiv.org/abs/2603.07396) ArXiv document.
 
 ## License
 
