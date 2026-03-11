@@ -33,9 +33,9 @@ Please also see `third-party-licenses/` for licensing information on bundled dep
 
 ## More
 * Feature requests and bugs can be raised on the [Github issue tracker](https://github.com/ctfl-public/isthmus/issues)
-* Marching windows [theory](doc/theory.md)
+* [Marching windows theory](doc/theory.md)
 * Technical [details](https://arxiv.org/abs/2603.07396) of the ISTHMUS algorithm
-* Introductory [tutorial](examples/ablation)
+* Introductory [tutorial](examples/ablation/ablationExample.md)
 * Verification [cases](V_and_V/fluxMapping)
 
 ## System Requirements
