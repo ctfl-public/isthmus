@@ -9,7 +9,7 @@ Conversely, the fluid simulation also transfers its coupling data via the surfac
 
 ![coupling_cycle](./images/fsi_coupling_scheme.png)
 
-The above diagram illustrates the coupled cycle in which marching windows can be used. During a single coupled system timestep, (1) a surface is generated from the current voxel structure, (2) the new surface is used to in the fluid simulation, (3) fluxes from the surface are mapped to voxels, and (4) the mapped voxel fluxes are used as boundary conditions for the solid simulation. For strongly coupled systems, this cycle can be repeated at the same timestep until convergence. Loosely coupled systems start the new system iteration without repeating the first. The motion mapping and flux mapping methods are described in sections below. Further details can be found in a paper[^1] [link pending] which explains marching windows and tests it on some basic geometries.
+The above diagram illustrates the coupled cycle in which marching windows can be used. During a single coupled system timestep, (1) a surface is generated from the current voxel structure, (2) the new surface is used to in the fluid simulation, (3) fluxes from the surface are mapped to voxels, and (4) the mapped voxel fluxes are used as boundary conditions for the solid simulation. For strongly coupled systems, this cycle can be repeated at the same timestep until convergence. Loosely coupled systems start the new system iteration without repeating the first. The motion mapping and flux mapping methods are described in sections below. Further details can be found in a paper[^1] which explains marching windows and tests it on some basic geometries.
 
 ## Motion Mapping
 
