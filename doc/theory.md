@@ -145,7 +145,7 @@ and total scalar quantity is conserved after mapping. The above explanation also
 
 $$ F_{v,\text{sum}} = F_{t,\text{sum}} - \sum_t^{n_{\text{surf},0}} F_t  $$
 
-[^1]: arXiv link pending
+[^1]: Huff, E.H., Poovathingal, S.J.: A Consistent Interface Reconstruction and Coupling Method for Multiphysics Simulations. In: ArXiv, Physics, issue 2603, pp. 07396 (2026). https://doi.org/10.48550/arXiv.2603.07396
 
 [^2]: Maple, C.: Geometric design and space planning using the marching squares and marching cube algorithms. In: 2003 International Conference on Geometric Modeling and Graphics, 2003. Proceedings, pp. 90–95 (2003). https://doi.org/10.1109/GMAG.2003.1219671
 
