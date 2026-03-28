@@ -112,10 +112,16 @@ class FlowConverter(BaseConverter):
 
         return timestep_data
 
-    def isFieldItemsCorrect(self, timestep_data):
+    def isFieldItemsCorrect(self, timestep_data, is_2d):
         """Checks if the required flow field items are in the file and returns a list of missing items for user to be aware of."""
         field_items = set(timestep_data['field_items'])
-        required_items = SpartaItems.REQUIRED_FLOW_FIELDS
+        required_items_3d = SpartaItems.REQUIRED_FLOW_FIELDS
+        required_items_2d = SpartaItems.REQUIRED_FLOW_FIELDS_2D
+
+        if is_2d:
+            required_items = required_items_2d
+        else:
+            required_items = required_items_3d
 
         missing_items = sorted(required_items - field_items)
         has_correct_items = len(missing_items) == 0
@@ -147,14 +153,14 @@ class FlowConverter(BaseConverter):
         data = timestep_data['cell_array']
         n_cells = len(data)
         
+        # 2D case requires a different approach
+        is_2d = 'zlo' not in field_items
+        
         # check if user has required items for flow grid
-        hasCorrectFieldItems, missingFieldItems = self.isFieldItemsCorrect(timestep_data)
+        hasCorrectFieldItems, missingFieldItems = self.isFieldItemsCorrect(timestep_data, is_2d)
         if not hasCorrectFieldItems:
             log.error("Missing required flow field item(s): %s", missingFieldItems)
             raise ValueError(f"Missing required flow field item(s): {missingFieldItems}")
-        
-        # 2D case requires a different approach
-        is_2d = 'zlo' not in field_items
         
         if is_2d:
             # 2D case: id, xlo, ylo, xhi, yhi, [fields...]
