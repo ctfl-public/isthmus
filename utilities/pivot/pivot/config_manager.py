@@ -19,7 +19,7 @@ class ConfigManager:
         with open(config_file, "rb") as f:
             raw = toml.load(f)
         
-        log.info("Loaded configuration from %s", config_file)
+        log.debug("Loaded configuration from %s", config_file)
         
         self.flow = (
             FlowConfig.from_dict(raw['flow']) 
@@ -50,24 +50,24 @@ class ConfigManager:
         return self.postprocess.vis_enabled
     
     def _log_construction(self):
-        log.info("Constructed configuration objects:")
+        log.debug("Constructed configuration objects:")
         
         if self.flow:
-            log.info("  FlowConfig: %s", self.flow)
+            log.debug("  FlowConfig: %s", self.flow)
         else:
-            log.info("  FlowConfig: not present")
+            log.debug("  FlowConfig: not present")
             
         if self.surface:
-            log.info("  SurfaceConfig: %s", self.surface)
+            log.debug("  SurfaceConfig: %s", self.surface)
         else:
-            log.info("  SurfaceConfig: not present")
+            log.debug("  SurfaceConfig: not present")
             
         if self.solid:
-            log.info("  SolidConfig: %s", self.solid)
+            log.debug("  SolidConfig: %s", self.solid)
         else:
-            log.info("  SolidConfig: not present")
+            log.debug("  SolidConfig: not present")
             
-        log.info("  PostprocessConfig: %s", self.postprocess)
+        log.debug("  PostprocessConfig: %s", self.postprocess)
         
     def _validate(self):
         log.debug("Starting config validation")

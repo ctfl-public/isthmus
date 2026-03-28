@@ -39,7 +39,7 @@ class SolidConverter(BaseConverter):
         if not solid_files:
             raise FileNotFoundError(f"No files found in {self.solid_dir}")
 
-        log.info("Processing %d solid file(s) (step=%d)", len(solid_files), self.step)
+        log.debug("Processing %d solid file(s) (step=%d)", len(solid_files), self.step)
 
         for file in tqdm(solid_files, desc="Processing solid files"):
             try:

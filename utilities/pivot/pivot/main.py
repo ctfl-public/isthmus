@@ -126,7 +126,7 @@ def postProcess(config : ConfigManager, sim_data : SimulationData):
 def runOnlyPostProcess(log : logging.Logger, config : ConfigManager, sim_data : SimulationData):
     """Run with only the post processing features"""
     
-    log.info("Running postprocessing only")
+    log.debug("Running postprocessing only")
     sim_data.output_dirs = {
             "flow": Path("flow_output"),
             "surface": Path("surface_output"),
@@ -207,17 +207,17 @@ def main():
         return
     
     if args.postprocessing == "ON":
-        log.info("Running with only postprocessing")
+        log.debug("Running with only postprocessing")
         runOnlyPostProcess(log, config, sim_data)
     else:
-        log.info("Starting conversion")
+        log.debug("Starting conversion")
         run(config, sim_data)
-        log.info("Starting post-processing")
+        log.debug("Starting post-processing")
         postProcess(config, sim_data)
             
 
     end = time.perf_counter()
-    log.info("Total time: %.2f s", end - start)
+    log.debug("Total time: %.2f s", end - start)
 
 if __name__ == "__main__":
     main()

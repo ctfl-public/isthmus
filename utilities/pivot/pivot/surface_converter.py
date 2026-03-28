@@ -42,8 +42,8 @@ class SurfaceConverter(BaseConverter):
         num_data_files = len(surf_data_files)
         num_geom_files = len(surf_geom_files)
 
-        log.info("Found %d surface data files", num_data_files)
-        log.info("Found %d surface geometry files", num_geom_files)
+        log.debug("Found %d surface data files", num_data_files)
+        log.debug("Found %d surface geometry files", num_geom_files)
 
 
         if num_data_files != num_geom_files:
