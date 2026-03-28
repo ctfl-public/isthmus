@@ -43,6 +43,11 @@ class FlowConverter(BaseConverter):
     def flow_dt(self) -> float:
         """Return flow timestep"""
         return self.settings.flow_dt
+    
+    @property
+    def field_map(self) -> dict[str, str]:
+        """Return the field mapping dictionary from config."""
+        return self.settings.field_map
         
     def processFlowDirectory(self):
         """Processes flow files in a specified directory"""
@@ -224,8 +229,21 @@ class FlowConverter(BaseConverter):
         field_names = field_items[field_start_idx:]
         
         # Attach field data to grid
+        log.debug("Attaching %d field(s) to grid. field_map has %d entry/entries.", len(field_names), len(self.field_map))
+
+        unmapped_keys = set(self.field_map.keys()) - set(field_names)
+        if unmapped_keys:
+            log.warning("field_map contains key(s) not found in field_names: %s", sorted(unmapped_keys))
+
         for idx, name in enumerate(field_names):
-            grid.cell_data[name] = field_data[:, idx]
+            mapped_name = self.field_map.get(name, name)
+            if mapped_name != name:
+                log.debug("  Renaming field '%s' -> '%s'", name, mapped_name)
+            else:
+                log.debug("  Field '%s' (no mapping)", name)
+            grid.cell_data[mapped_name] = field_data[:, idx]
+
+        log.debug("Grid cell_data arrays: %s", list(grid.cell_data.keys()))
         
         return grid
     

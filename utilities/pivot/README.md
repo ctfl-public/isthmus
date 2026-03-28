@@ -75,6 +75,11 @@ flow_dir = "/path/to/flow_data/"
 flow_dt = 1e-9
 step = 1
 
+[flow.field_map]
+"f_1[1]" = "T_tr"
+"f_1[2]" = "T_rot"
+"f_1[3]" = "T_vib"
+
 [solid]
 solid_dir = "/path/to/solid_data/"
 solid_dt = 1e-10
@@ -97,6 +102,7 @@ sync_enabled = true
 - **flow**: flow field data from SPARTA
     - **flow_dir**: directory where your SPARTA flow dump files are located
     - **flow_dt**: timestep used in SPARTA simulation
+    - **field_map**: optional. Maps raw SPARTA field names (e.g. `f_1[1]`) to human-readable names in the VTK output. Only fields you want renamed need to be listed - unmapped fields will keep their original names. Key names must match exactly what appears in your SPARTA dump file header.
 
 - **surface**: surface data from SPARTA and ISTHMUS
     - **surf_data_dir**: directory where your `spforces` or `spetot` dumps are located

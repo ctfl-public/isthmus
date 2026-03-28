@@ -17,7 +17,7 @@ def parseArgs() -> argparse.ArgumentParser:
     
     parser.add_argument(
         "--logging",
-        default="INFO",
+        default="WARNING",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Set logging level"
         )
