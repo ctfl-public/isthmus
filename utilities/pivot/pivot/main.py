@@ -189,13 +189,13 @@ def main():
     
     log = logging.getLogger(__name__)
     
-    log.info("=" * 60)
-    log.info("Paraview INterface for Voxel and Surface OuTput (PIVOT)")
-    log.info(
+    print("=" * 60)
+    print("Paraview INterface for Voxel and Surface OuTput (PIVOT)")
+    print(
         "If you encounter any errors you don’t understand, "
         "please contact Savio Poovathingal or Robbie Harper for assistance."
     )
-    log.info("=" * 60)
+    print("=" * 60)
 
     start = time.perf_counter()
     

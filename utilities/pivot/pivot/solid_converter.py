@@ -55,7 +55,7 @@ class SolidConverter(BaseConverter):
                 log.error("Failed processing solid file %s: %s", file, e)
                 raise
 
-        log.info("Solid data processing complete. \nSolid .vtu files are stored in solid_output directory")
+        print("Solid data processing complete. \nSolid .vtu files are stored in solid_output directory")
             
 
     def processSolidFile(self, filepath):

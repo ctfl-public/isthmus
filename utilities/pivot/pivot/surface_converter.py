@@ -76,7 +76,7 @@ class SurfaceConverter(BaseConverter):
 
             self.writeSurfVTK(timestep_data, poly_data)
         
-        log.info("Surface data processing complete. Surface .vtk files are stored in surface_output directory.")
+        print("Surface data processing complete. Surface .vtk files are stored in surface_output directory.")
     
     # surface data is associated with surface geometry
     def processSurfGeometryFile(self, filename):

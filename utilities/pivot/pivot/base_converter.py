@@ -150,5 +150,5 @@ class BaseConverter:
             f.write('  </Collection>\n')
             f.write('</VTKFile>\n')
             
-        log.info("%s written successfully", pvd_path)
-        log.info("Use: paraview %s", pvd_path)
+        print(f"{solver_name}.pvd written successfully")
+        print(f"Use: paraview {solver_name}.pvd")
