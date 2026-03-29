@@ -43,6 +43,11 @@ class FlowConverter(BaseConverter):
     def flow_dt(self) -> float:
         """Return flow timestep"""
         return self.settings.flow_dt
+    
+    @property
+    def field_map(self) -> dict[str, str]:
+        """Return the field mapping dictionary from config."""
+        return self.settings.field_map
         
     def processFlowDirectory(self):
         """Processes flow files in a specified directory"""
@@ -112,10 +117,16 @@ class FlowConverter(BaseConverter):
 
         return timestep_data
 
-    def isFieldItemsCorrect(self, timestep_data):
+    def isFieldItemsCorrect(self, timestep_data, is_2d):
         """Checks if the required flow field items are in the file and returns a list of missing items for user to be aware of."""
         field_items = set(timestep_data['field_items'])
-        required_items = SpartaItems.REQUIRED_FLOW_FIELDS
+        required_items_3d = SpartaItems.REQUIRED_FLOW_FIELDS
+        required_items_2d = SpartaItems.REQUIRED_FLOW_FIELDS_2D
+
+        if is_2d:
+            required_items = required_items_2d
+        else:
+            required_items = required_items_3d
 
         missing_items = sorted(required_items - field_items)
         has_correct_items = len(missing_items) == 0
@@ -147,14 +158,14 @@ class FlowConverter(BaseConverter):
         data = timestep_data['cell_array']
         n_cells = len(data)
         
+        # 2D case requires a different approach
+        is_2d = 'zlo' not in field_items
+        
         # check if user has required items for flow grid
-        hasCorrectFieldItems, missingFieldItems = self.isFieldItemsCorrect(timestep_data)
+        hasCorrectFieldItems, missingFieldItems = self.isFieldItemsCorrect(timestep_data, is_2d)
         if not hasCorrectFieldItems:
             log.error("Missing required flow field item(s): %s", missingFieldItems)
             raise ValueError(f"Missing required flow field item(s): {missingFieldItems}")
-        
-        # 2D case requires a different approach
-        is_2d = 'zlo' not in field_items
         
         if is_2d:
             # 2D case: id, xlo, ylo, xhi, yhi, [fields...]
@@ -218,8 +229,21 @@ class FlowConverter(BaseConverter):
         field_names = field_items[field_start_idx:]
         
         # Attach field data to grid
+        log.debug("Attaching %d field(s) to grid. field_map has %d entry/entries.", len(field_names), len(self.field_map))
+
+        unmapped_keys = set(self.field_map.keys()) - set(field_names)
+        if unmapped_keys:
+            log.warning("field_map contains key(s) not found in field_names: %s", sorted(unmapped_keys))
+
         for idx, name in enumerate(field_names):
-            grid.cell_data[name] = field_data[:, idx]
+            mapped_name = self.field_map.get(name, name)
+            if mapped_name != name:
+                log.debug("  Renaming field '%s' -> '%s'", name, mapped_name)
+            else:
+                log.debug("  Field '%s' (no mapping)", name)
+            grid.cell_data[mapped_name] = field_data[:, idx]
+
+        log.debug("Grid cell_data arrays: %s", list(grid.cell_data.keys()))
         
         return grid
     

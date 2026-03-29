@@ -17,7 +17,7 @@ def parseArgs() -> argparse.ArgumentParser:
     
     parser.add_argument(
         "--logging",
-        default="INFO",
+        default="WARNING",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Set logging level"
         )
@@ -126,7 +126,7 @@ def postProcess(config : ConfigManager, sim_data : SimulationData):
 def runOnlyPostProcess(log : logging.Logger, config : ConfigManager, sim_data : SimulationData):
     """Run with only the post processing features"""
     
-    log.info("Running postprocessing only")
+    log.debug("Running postprocessing only")
     sim_data.output_dirs = {
             "flow": Path("flow_output"),
             "surface": Path("surface_output"),
@@ -189,13 +189,13 @@ def main():
     
     log = logging.getLogger(__name__)
     
-    log.info("=" * 60)
-    log.info("Paraview INterface for Voxel and Surface OuTput (PIVOT)")
-    log.info(
+    print("=" * 60)
+    print("Paraview INterface for Voxel and Surface OuTput (PIVOT)")
+    print(
         "If you encounter any errors you don’t understand, "
         "please contact Savio Poovathingal or Robbie Harper for assistance."
     )
-    log.info("=" * 60)
+    print("=" * 60)
 
     start = time.perf_counter()
     
@@ -207,17 +207,17 @@ def main():
         return
     
     if args.postprocessing == "ON":
-        log.info("Running with only postprocessing")
+        log.debug("Running with only postprocessing")
         runOnlyPostProcess(log, config, sim_data)
     else:
-        log.info("Starting conversion")
+        log.debug("Starting conversion")
         run(config, sim_data)
-        log.info("Starting post-processing")
+        log.debug("Starting post-processing")
         postProcess(config, sim_data)
             
 
     end = time.perf_counter()
-    log.info("Total time: %.2f s", end - start)
+    log.debug("Total time: %.2f s", end - start)
 
 if __name__ == "__main__":
     main()

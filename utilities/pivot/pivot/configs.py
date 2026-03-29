@@ -16,6 +16,7 @@ from pathlib import Path
 class FlowConfig:
     flow_dir: Path
     flow_dt: float
+    field_map: dict[str, str] = field(default_factory=dict)
     step: int = field(default=1)
 
     @classmethod
@@ -23,6 +24,7 @@ class FlowConfig:
         try:
             flow_dir = Path(cfg["flow_dir"])
             flow_dt = float(cfg["flow_dt"])
+            field_map = cfg.get("field_map", {})
             step = int(cfg.get("step", 1))  # optional, defaults to 1
         except KeyError as e:
             raise ValueError(f"[flow] missing required key: {e.args[0]}")
@@ -32,7 +34,7 @@ class FlowConfig:
         if step <= 0:
             raise ValueError("[flow] step must be > 0")
 
-        return cls(flow_dir=flow_dir, flow_dt=flow_dt, step=step)
+        return cls(flow_dir=flow_dir, flow_dt=flow_dt, field_map=field_map, step=step)
 
 
 @dataclass(frozen=True)

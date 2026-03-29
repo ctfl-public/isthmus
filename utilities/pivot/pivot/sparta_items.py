@@ -17,3 +17,4 @@ class SpartaItems:
     ZHI = "zhi"
     
     REQUIRED_FLOW_FIELDS = {XLO, XHI, YLO, YHI, ZLO, ZHI}
+    REQUIRED_FLOW_FIELDS_2D = {XLO, XHI, YLO, YHI}

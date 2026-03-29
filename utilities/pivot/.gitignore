@@ -12,3 +12,5 @@ Doxyfile
 html/
 latex/
 pivot.egg-info
+.DS_Store
+**/.DS_Store

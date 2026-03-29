@@ -100,7 +100,7 @@ class BaseConverter:
         # Only set the output directory once
         if self.sim_data.output_dirs[solver_name] is None:
             self.sim_data.output_dirs[solver_name] = out_dir
-            log.info("Registered output directory for %s: %s", solver_name, out_dir)
+            log.debug("Registered output directory for %s: %s", solver_name, out_dir)
         
         # Save the file
         outfile_name = out_dir / f"{solver_name}_{timestep}{ext}"
@@ -150,5 +150,5 @@ class BaseConverter:
             f.write('  </Collection>\n')
             f.write('</VTKFile>\n')
             
-        log.info("%s written successfully", pvd_path)
-        log.info("Use: paraview %s", pvd_path)
+        print(f"{solver_name}.pvd written successfully")
+        print(f"Use: paraview {solver_name}.pvd")

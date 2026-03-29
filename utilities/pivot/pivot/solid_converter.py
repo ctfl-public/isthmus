@@ -39,7 +39,7 @@ class SolidConverter(BaseConverter):
         if not solid_files:
             raise FileNotFoundError(f"No files found in {self.solid_dir}")
 
-        log.info("Processing %d solid file(s) (step=%d)", len(solid_files), self.step)
+        log.debug("Processing %d solid file(s) (step=%d)", len(solid_files), self.step)
 
         for file in tqdm(solid_files, desc="Processing solid files"):
             try:
@@ -55,7 +55,7 @@ class SolidConverter(BaseConverter):
                 log.error("Failed processing solid file %s: %s", file, e)
                 raise
 
-        log.info("Solid data processing complete. \nSolid .vtu files are stored in solid_output directory")
+        print("Solid data processing complete. \nSolid .vtu files are stored in solid_output directory")
             
 
     def processSolidFile(self, filepath):
