@@ -599,7 +599,7 @@ std::vector<CornerData> MotionMapper::build_corner_grid(
     return corners;
 }
 
-// Extract only the surface-facing voxel metadata needed by downstream consumers.
+// Extract only the surface-facing voxel
 std::vector<SurfaceVoxelInfo> MotionMapper::collect_surface_voxels(const std::vector<VoxelCell>& voxels) {
     std::vector<SurfaceVoxelInfo> out;
     for (const auto& voxel : voxels) {
@@ -629,14 +629,20 @@ MarchingWindowsResult MotionMapper::run(
     const DomainConfig& domain,
     const VoxelSet& voxels,
     const RunOptions& options) const {
+
     validate_inputs(domain, voxels);
 
+    // initialize the marching-window lattice and 
+    // classify every voxel as solid, void, or surface with a depth and weight
     auto voxel_grid = build_voxel_grid(domain, voxels);
     classify_voxels(domain, voxel_grid);
-
     MarchingWindowsResult result{};
     result.domain = domain;
+
+    // store surface voxels separately for later use in flux mapping.
     result.surface_voxels = collect_surface_voxels(voxel_grid);
+
+    // Build the corner fill field with weighted volumes of the nearby voxels to each corner.
     auto corners = build_corner_grid(domain, voxel_grid, result.corner_dims);
     result.corner_fill_fractions.reserve(corners.size());
     for (const auto& corner : corners) {
