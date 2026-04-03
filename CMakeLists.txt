@@ -62,6 +62,7 @@ if(ISTHMUS_BUILD_TESTS)
     add_executable(isthmus_cpp_tests
         cpp/tests/test_main.cpp
         cpp/tests/test_geometry.cpp
+        cpp/tests/test_io.cpp
         cpp/tests/test_motion_mapping.cpp
     )
     target_link_libraries(isthmus_cpp_tests PRIVATE isthmus_cpp)

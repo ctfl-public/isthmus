@@ -13,6 +13,11 @@ void write_sparta_surface(
     Dimension dimension,
     const std::filesystem::path& output_path);
 
+// Write a 3D triangle surface as VTK XML PolyData for direct ParaView visualization.
+void write_vtp_surface(
+    const SurfaceMesh& mesh,
+    const std::filesystem::path& output_path);
+
 // Write triangle-to-voxel or line-to-voxel ownership in the legacy association format.
 void write_flux_association(
     const FluxAssociation& association,
