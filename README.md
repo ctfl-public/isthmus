@@ -157,16 +157,6 @@ Please cite the following articles when mentioning ISTHMUS in your own papers.
   archivePrefix = {arXiv},
   primaryClass  = {physics.flu-dyn}
 }
-<!-- @article{yassin2026isthmus_REVIEW, -->
-<!--   title   = {ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations}, -->
-<!--   author  = {Yassin, Ahmed H. and Huff, Ethan H. and Mohan Ramu, Vijay B. and Tacchi, Bruno and Am\`erico, Carlos E. and Stoffel, Tyler D. and Poovathingal, Savio J.}, -->
-<!--   journal = {SoftwareX}, -->
-<!--   volume  = {}, -->
-<!--   number  = {}, -->
-<!--   doi     = {}, -->
-<!--   year    = {2026}, -->
-<!--   note    = {{, under review}} -->
-<!--   } -->
 ```
 
 <!-- Source Files (./src)
