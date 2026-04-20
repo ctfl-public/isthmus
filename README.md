@@ -143,8 +143,7 @@ You should recieve a message indicating that all tests have passed and no errors
 Please cite the following articles when mentioning ISTHMUS in your own papers.
 
 * Huff et al. [A Consistent Interface Reconstruction and Coupling Method for Multiphysics Simulations.](https://arxiv.org/abs/2603.07396) *ArXiv* 2026.
-* Yassin et al. ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations. *SoftwareX* 2026 (under review).
-<!-- * Yassin et al. [ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations.](SOFTWAREX LINK) *SoftwareX* 2026. -->
+* Yassin et al. [ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations.](https://www.sciencedirect.com/science/article/pii/S2352711026001536) *SoftwareX* 2026.
 
 **Bibtex**
 ```bibtex
@@ -157,6 +156,15 @@ Please cite the following articles when mentioning ISTHMUS in your own papers.
   archivePrefix = {arXiv},
   primaryClass  = {physics.flu-dyn}
 }
+@article{yassin2026isthmus,
+  title   = {ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations},
+  author  = {Yassin, Ahmed H. and Huff, Ethan H. and Mohan Ramu, Vijay B. and Tacchi, Bruno and Am\`erico, Carlos E. and Stoffel, Tyler D. and Poovathingal, Savio J.},
+  journal = {SoftwareX},
+  volume  = {34},
+  number  = {102660},
+  doi     = {10.1016/j.softx.2026.102660},
+  year    = {2026}
+  }
 ```
 
 <!-- Source Files (./src)
