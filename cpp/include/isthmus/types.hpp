@@ -34,18 +34,21 @@ struct RunOptions {
 
 /*
  * Describes the physical marching-windows domain.
- *
- * `limits` stores the lower and upper coordinate bounds of the marching grid.
- * `cell_counts` gives the number of marching cells along each active axis.
- * `voxel_size` is the edge length of one solid voxel in the caller's model.
- * `weighting` enables the depth-based weighting used to smooth the later
- * corner fill field near the solid boundary.
  */
 struct DomainConfig {
+    // Dimension of the marching grid, 2 or 3.
     Dimension dimension = Dimension::D3;
+
+    // Lower and upper coordinate bounds of the marching grid in each dimension.
     std::array<std::array<double, kMaxDims>, 2> limits{{{0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}}};
+
+    // Number of marching cells along each active axis.
     std::array<std::size_t, kMaxDims> cell_counts{{1, 1, 1}};
+
+    // Edge length of voxel in the caller's model.
     double voxel_size = 1.0;
+
+    // Whether to apply depth-based weighting to the corner fill field.
     bool weighting = true;
 };
 
@@ -61,7 +64,7 @@ struct VoxelRecord {
     std::optional<std::string> material_tag;
 };
 
-// Collection of occupied voxels supplied to a MarchingWindows run.
+// Collection of occupied voxels supplied to a MarchingWindows run from the caller.
 struct VoxelSet {
     std::vector<VoxelRecord> voxels;
 };

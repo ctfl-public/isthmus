@@ -26,20 +26,36 @@ struct VoxelFace2D {
 /*
  * Internal voxel record used after the sparse user input has been expanded onto
  * the regular lattice that marching windows operates on.
- *
- * `type` stores boundary depth: surface voxels start at 0, solid interior
- * layers count upward, and ghost voxels in the surrounding void count downward.
  */
 struct VoxelCell {
+    // Voxel center.
     std::array<double, kMaxDims> centroid{{0.0, 0.0, 0.0}};
+
+    // Integer lattice index in the marching grid.
     std::array<int, kMaxDims> indices{{0, 0, 0}};
+
+    // flattened index into the flat grid vector.
     std::size_t flattened_index = 0;
+
+    // Caller-supplied id propagated through mapping stages.
     std::size_t original_id = static_cast<std::size_t>(-1);
+
+    // Boundary depth: 0 at surface, positive in solid, negative in surrounding void.
     int type = -1;
+
+    // True once depth classification for this voxel is complete.
     bool finalized = false;
+
+    // True for voxels on the solid/void boundary.
     bool surface = false;
+
+    // Depth-derived weight used in corner-fill accumulation.
     double weight = 0.0;
+
+    // List of faces for this voxel. 
     std::vector<VoxelFace3D> faces3d;
+
+    // List if edges for this voxel, used in 2D.
     std::vector<VoxelFace2D> faces2d;
 };
 

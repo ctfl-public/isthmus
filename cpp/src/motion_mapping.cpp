@@ -20,7 +20,8 @@ namespace isthmus {
 
 namespace {
 
-// Convert the public dimension enum into a simple loop bound for shared helpers.
+// Convert the public dimension enum into std::size_t values used for indexing and iteration.
+// It ensures treating the dimension value as a count rather than as a semantic enum value.
 std::size_t active_dims(Dimension d) {
     return static_cast<std::size_t>(d);
 }
@@ -36,6 +37,15 @@ std::array<double, kMaxDims> cell_lengths(const DomainConfig& domain) {
     return out;
 }
 
+/*
+ * Find the maximum component of a vector in the active dimensions.
+ * 
+ * Arguments:
+ * - `values` is the input array of values to scan.
+ * - `dims` is the number of active dimensions to consider.
+ * 
+ * Returns the maximum value among the first `dims` components of the input array.
+ */
 double max_component(const std::array<double, kMaxDims>& values, std::size_t dims) {
     double out = values[0];
     for (std::size_t i = 1; i < dims; ++i) {
@@ -44,7 +54,17 @@ double max_component(const std::array<double, kMaxDims>& values, std::size_t dim
     return out;
 }
 
-// Convert a physical centroid position into integer voxel-lattice coordinates.
+/*
+ * Convert a physical centroid position into integer voxel-lattice coordinates.
+ * 
+ * Arguments:
+ * - `point` is the physical centroid to convert.
+ * - `low` is the lower bound of the domain in each dimension.
+ * - `voxel_size` is the size of each voxel.
+ * - `dims` is the number of active dimensions.
+ * 
+ * Returns the integer lattice index of the voxel containing the point, where the voxel at `low` has index 0 in every dimension.
+ */
 std::array<int, kMaxDims> to_index(
     const std::array<double, kMaxDims>& point,
     const std::array<double, kMaxDims>& low,
@@ -59,10 +79,14 @@ std::array<int, kMaxDims> to_index(
 
 /*
  * Flatten structured-grid indices with x as the fastest-varying direction.
- *
- * Keeping this ordering explicit matters because the same layout is used for
- * voxel lattices, corner lattices, and the parity tests that compare against
- * established marching-windows behavior.
+ * for example, in 3D the index (i, j, k) maps to i + nx * (j + ny * k).
+ * 
+ * Arguments:
+ * - `index` is the multi-dimensional index to flatten.
+ * - `dims` is the size of the grid in each dimension.
+ * - `ndims` is the number of active dimensions.
+ * 
+ * Returns the flattened index corresponding to the multi-dimensional index.
  */
 std::size_t flatten_index(
     const std::array<int, kMaxDims>& index,
@@ -77,6 +101,16 @@ std::size_t flatten_index(
     return flat;
 }
 
+/*
+ * Check if a multi-dimensional index is within the bounds of the grid.
+ * 
+ * Arguments:
+ * - `index` is the multi-dimensional index to check.
+ * - `dims` is the size of the grid in each dimension.
+ * - `ndims` is the number of active dimensions.
+ * 
+ * Returns true if the index is valid, false otherwise.
+ */
 bool valid_index(
     const std::array<int, kMaxDims>& index,
     const std::array<std::size_t, kMaxDims>& dims,
@@ -92,9 +126,23 @@ bool valid_index(
 /*
  * Generate the face-sharing neighbor offsets used by marching windows.
  *
- * Depth classification only allows movement through faces, not through edges or
- * corners. That is what makes depth correspond to the number of cardinal steps
- * from a voxel to the outer boundary.
+ * This function builds the set of cardinal (face-sharing) neighbor offsets 
+ * for a grid with dims active dimensions. For each dimension d, it creates 
+ * two direction vectors: one step in the negative direction (-1) and one step 
+ * in the positive direction (+1), while all other components stay 0.
+ * 
+ * Arguments:
+ * - `dims` is the number of active dimensions to generate offsets for.
+ * 
+ * Returns a vector of neighbor offsets corresponding to the cardinal directions
+ * in the active dimensions.
+ * 
+ * for example, in 3D the output will be:
+ * [
+ *   [-1, 0, 0], [1, 0, 0],
+ *   [0, -1, 0], [0, 1, 0],
+ *   [0, 0, -1], [0, 0, 1]
+ * ]
  */
 std::vector<std::array<int, kMaxDims>> cardinal_neighbors(std::size_t dims) {
     std::vector<std::array<int, kMaxDims>> offsets;
@@ -110,9 +158,7 @@ std::vector<std::array<int, kMaxDims>> cardinal_neighbors(std::size_t dims) {
 }
 
 /*
- * Build the six axis-aligned faces of a voxel once that voxel has been marked
- * as part of the outer surface. Those faces become the geometric support for
- * later visibility checks and flux association.
+ * Build the six faces of a voxel once that voxel has been marked as part of the outer surface. 
  */
 void add_3d_faces(VoxelCell& voxel, double voxel_size) {
     const auto lo = std::array<double, 3>{
@@ -174,7 +220,10 @@ void add_2d_faces(VoxelCell& voxel, double voxel_size) {
  * build the auxiliary lattice around it.
  */
 void MotionMapper::validate_inputs(const DomainConfig& domain, const VoxelSet& voxels) {
+    // Get the number of active dimensions for bounds checking and iteration
     const auto dims = active_dims(domain.dimension);
+    
+    // Check basic validity of the domain parameters and input voxel set
     if (dims != 2 && dims != 3) {
         throw InvalidInputError("Dimension must be 2 or 3");
     }
@@ -185,6 +234,7 @@ void MotionMapper::validate_inputs(const DomainConfig& domain, const VoxelSet& v
         throw InvalidInputError("Voxel size must be positive");
     }
 
+    // Check that the grid has positive extent, positive cell counts, and cells at least as large as the solid voxels
     const auto cl = cell_lengths(domain);
     for (std::size_t i = 0; i < dims; ++i) {
         if (domain.limits[1][i] <= domain.limits[0][i]) {
@@ -198,6 +248,9 @@ void MotionMapper::validate_inputs(const DomainConfig& domain, const VoxelSet& v
         }
     }
 
+    // Check that the voxel set sits far enough inside the marching domain 
+    // that the weighting and ghost-voxel logic have room to 
+    // build the auxiliary lattice around it.
     std::array<double, kMaxDims> min_vox = voxels.voxels.front().centroid;
     std::array<double, kMaxDims> max_vox = voxels.voxels.front().centroid;
     for (const auto& voxel : voxels.voxels) {
@@ -207,10 +260,14 @@ void MotionMapper::validate_inputs(const DomainConfig& domain, const VoxelSet& v
         }
     }
 
+    // if weighting is enabled, the buffer must accommodate the larger weighting radius. 
     const double lmax = domain.weighting
         ? 1.5 * max_component(cl, dims) + domain.voxel_size
         : 0.5 * (max_component(cl, dims) + domain.voxel_size);
 
+    // Check that the voxel set sits far enough inside the marching domain 
+    // that the weighting and ghost-voxel logic have room to 
+    // build the auxiliary lattice around it.
     for (std::size_t i = 0; i < dims; ++i) {
         const double lo = domain.limits[0][i] + lmax;
         const double hi = domain.limits[1][i] - lmax;
