@@ -25,17 +25,28 @@ option(ISTHMUS_BUILD_TESTS "Build C++ tests" ON)
 add_library(isthmus_cpp
     cpp/src/geometry.cpp
     cpp/src/motion_mapping.cpp
+    cpp/src/marching_cubes.cpp
     cpp/src/io.cpp
     cpp/src/marching_windows.cpp
 )
+
+# Provide a namespaced alias so downstream CMake consumers can link against a
+# stable imported-style target name.
+# It gives the existing target isthmus_cpp a second, namespaced name: isthmus_cpp::isthmus_cpp
+add_library(isthmus_cpp::isthmus_cpp ALIAS isthmus_cpp)
 
 # Export the public include path for the library.
 # PUBLIC means:
 # - used when compiling the library itself
 # - also visible to targets that link against this library
+# - In other words, these headers are part of the library’s public interface.
+# The two $<...> generator expressions ensure the correct include path is used for both build-tree and install-tree consumers.
+# - Build-tree consumers will see the path to the source directory (where the headers are located during development).
+# - Install-tree consumers will see the path to the installation include directory (where the headers will be installed).
 target_include_directories(isthmus_cpp
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/cpp/include
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cpp/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 # Enable strict warnings on the library target.
