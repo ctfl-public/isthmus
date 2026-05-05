@@ -30,7 +30,7 @@ The native code currently provides:
 - Geometry utilities used by the implemented and planned mapping stages
 - Early motion-mapping stages up through corner fill fraction generation
 - SPARTA-style output writers for surface meshes and voxel ownership files
-- A lightweight test harness and a small demo program
+- A lightweight test harness and a pair of standalone demo programs
 
 The native code does not yet provide:
 
@@ -44,6 +44,9 @@ The native code does not yet provide:
 - `include/isthmus/`
   - Public-facing API and shared data structures.
   - Start here if you want to understand what a caller is expected to provide and what a run returns.
+- `uml.md`
+  - A current UML-style class diagram for the native C++ implementation.
+  - Use this as a quick map of the public API, internal grid types, geometry helpers, IO writers, and the native surface backend.
 - `src/`
   - Implementation of the current algorithm stages.
   - `motion_mapping.cpp` is the most important file for understanding the existing native behavior.
@@ -52,7 +55,8 @@ The native code does not yet provide:
   - Small native tests that protect the currently implemented behavior.
   - These tests focus on geometric correctness and agreement with existing verification cases.
 - `examples/`
-  - Minimal programs that exercise the code without requiring the full Python workflow.
+  - One subdirectory per standalone native example, each with its own `CMakeLists.txt`.
+  - See `examples/README.md` for the list of examples and consumer-style build steps.
 
 ## Build and Test
 
@@ -66,22 +70,46 @@ Generates the build system in `build-wsl/` and configures the project using the 
 ```bash
 cmake --build build-wsl -j
 ```
-Compiles the library, the demo executable, and the native tests. The `-j` flag allows the build tool to use parallel jobs.
+Compiles the library and the native tests. The `-j` flag allows the build tool to use parallel jobs.
 
 ```bash
 ctest --test-dir build-wsl --output-on-failure
 ```
 Runs the compiled native test suite from the build directory and prints detailed output for any failing test.
 
-## Demo
+## Use From Standalone Example Projects
 
 ```bash
-./build-wsl/isthmus_corner_demo
+cmake -S cpp/examples/corner_demo -B build-corner-demo -Disthmus_cpp_DIR="$PWD/build-wsl"
+cmake --build build-corner-demo -j
 ```
-Runs the current example program. It constructs a simple voxelized shape, executes the implemented motion-mapping stages, and reports how many corner fill values and surface voxels were generated.
+Configures and builds the standalone corner-demo project against the already
+built ISTHMUS++ package exported from `build-wsl/`.
 
-## Relationship to the Python Code
+```bash
+./build-corner-demo/isthmus_corner_demo
+```
+Runs the corner demo after it has been built as a separate consumer project.
 
-The Python codebase is still the broader reference implementation because it already contains the full workflow, including surface extraction and flux mapping. The C++ code in this directory should be read as a native implementation of the same underlying algorithm, not as a thin wrapper around the Python modules.
+```bash
+cmake -S cpp/examples/surface_export_demo -B build-surface-export-demo -Disthmus_cpp_DIR="$PWD/build-wsl"
+cmake --build build-surface-export-demo -j
+```
+Configures and builds the standalone surface-export demo against the already
+built ISTHMUS++ package exported from `build-wsl/`.
 
-Where tests or comments mention existing verification cases, they are pointing to already-known behavior that the native code is expected to reproduce. The intent is to keep the algorithm understandable on its own while still checking that it agrees with the established implementation.
+```bash
+./build-surface-export-demo/isthmus_surface_export_demo
+```
+Runs the native 3D surface export example. It reconstructs a small synthetic
+voxel cube, writes `surface_cube.surf` and `surface_cube.vtp` into
+`surface_export_demo_output/`, and prints the absolute output paths. The
+`.vtp` file opens directly in ParaView.
+
+```bash
+./build-surface-export-demo/isthmus_surface_export_demo /tmp/isthmus-surface-demo
+```
+Runs the same example but writes the exported files into the user-specified
+output directory.
+
+
