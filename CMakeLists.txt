@@ -27,6 +27,7 @@ add_library(isthmus_cpp
     cpp/src/motion_mapping.cpp
     cpp/src/marching_cubes.cpp
     cpp/src/io.cpp
+    cpp/src/utilities.cpp
     cpp/src/marching_windows.cpp
 )
 
@@ -73,6 +74,7 @@ if(ISTHMUS_BUILD_TESTS)
         cpp/tests/test_geometry.cpp
         cpp/tests/test_io.cpp
         cpp/tests/test_motion_mapping.cpp
+        cpp/tests/test_utilities.cpp
     )
     target_link_libraries(isthmus_cpp_tests PRIVATE isthmus_cpp)
 
