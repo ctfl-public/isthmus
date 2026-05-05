@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "isthmus/exceptions.hpp"
+#include "marching_cubes.hpp"
 
 namespace isthmus {
 
@@ -223,8 +224,8 @@ void MotionMapper::validate_inputs(const DomainConfig& domain, const VoxelSet& v
 }
 
 /*
- * Expand the sparse occupied-voxel list into the regular voxel lattice used by
- * marching windows.
+ * Expand the sparse occupied-voxel list from the caller's into the regular voxel lattice 
+ * used by marching windows.
  *
  * The lattice is intentionally larger than the occupied region. That extra
  * buffer is what allows the algorithm to classify both solid interior layers
@@ -232,29 +233,45 @@ void MotionMapper::validate_inputs(const DomainConfig& domain, const VoxelSet& v
  */
 std::vector<VoxelCell> MotionMapper::build_voxel_grid(const DomainConfig& domain, const VoxelSet& voxels) {
     const auto dims = active_dims(domain.dimension);
-    const auto cl = cell_lengths(domain);
-    const double cv_ratio = max_component(cl, dims) / domain.voxel_size;
-    const double buffer = std::ceil((3.0 * cv_ratio / 2.0) + 0.5) * domain.voxel_size;
+    const auto cl = cell_lengths(domain); // cell lengths
+    const double cv_ratio = max_component(cl, dims) / domain.voxel_size; // ratio of marching cell size to voxel size
+    const double buffer = std::ceil((3.0 * cv_ratio / 2.0) + 0.5) * domain.voxel_size; // buffer size
 
-    std::array<double, kMaxDims> xlo = voxels.voxels.front().centroid;
-    std::array<double, kMaxDims> xhi = voxels.voxels.front().centroid;
+    // First find the bounding box of the occupied voxel set, then expand it by the buffer to get the marching grid bounds.
+    std::array<double, kMaxDims> xlo = voxels.voxels.front().centroid; // low bound of voxel lattice 
+    std::array<double, kMaxDims> xhi = voxels.voxels.front().centroid; // high bound of voxel lattice
     for (const auto& voxel : voxels.voxels) {
         for (std::size_t i = 0; i < dims; ++i) {
-            xlo[i] = std::min(xlo[i], voxel.centroid[i]) - 2.0 * buffer;
-            xhi[i] = std::max(xhi[i], voxel.centroid[i]) + 2.0 * buffer;
+            xlo[i] = std::min(xlo[i], voxel.centroid[i]);
+            xhi[i] = std::max(xhi[i], voxel.centroid[i]);
         }
     }
-
-    std::array<double, kMaxDims> grid_lo{{0.0, 0.0, 0.0}};
-    std::array<std::size_t, kMaxDims> grid_dims{{1, 1, 1}};
-    const auto first = voxels.voxels.front().centroid;
+    // Expand bounds once after the reduction is complete.
     for (std::size_t i = 0; i < dims; ++i) {
-        const double nlo = std::ceil((first[i] - xlo[i]) / domain.voxel_size);
+        xlo[i] -= 2.0 * buffer;
+        xhi[i] += 2.0 * buffer;
+    }
+
+    /*
+     * Calculate the size and origin of the voxel lattice so that the first occupied 
+     * voxel is aligned to a lattice point, then build the lattice around it.
+     */
+    std::array<double, kMaxDims> grid_lo{{0.0, 0.0, 0.0}}; // lower corner of the voxel grid
+    std::array<std::size_t, kMaxDims> grid_dims{{1, 1, 1}}; // number of voxels in the voxel grid along each dimension
+    const auto first = voxels.voxels.front().centroid; // centroid of the first occupied voxel
+    for (std::size_t i = 0; i < dims; ++i) {
+        // number of voxels from the first occupied voxel to the lower bound of the voxel grid
+        const double nlo = std::ceil((first[i] - xlo[i]) / domain.voxel_size); 
         grid_lo[i] = first[i] - nlo * domain.voxel_size;
-        const double nhi = nlo + std::ceil((xhi[i] - first[i]) / domain.voxel_size);
+        // number of voxels from the first occupied voxel to the upper bound of the voxel grid
+        const double nhi = nlo + std::ceil((xhi[i] - first[i]) / domain.voxel_size); 
         grid_dims[i] = static_cast<std::size_t>(nhi) + 1;
     }
 
+    /* 
+     * Build the voxel lattice and initialize it with the input voxels. 
+     * The lattice is initialized with all voxels as void candidates (type -1) until we mark the occupied ones as depth 0.
+     */
     std::size_t total = 1;
     for (std::size_t i = 0; i < dims; ++i) {
         total *= grid_dims[i];
@@ -491,6 +508,17 @@ std::vector<CornerData> MotionMapper::build_corner_grid(
         total *= out_dims[i];
     }
 
+    /*
+     * Treat the domain corner lattice as an explicit bounded grid before any
+     * voxel-to-corner ownership mapping happens.
+     *
+     * The auxiliary voxel lattice extends beyond the marching domain on
+     * purpose, because weighted ghost voxels outside the solid are needed for
+     * depth classification. Those exterior voxels must not be allowed to index
+     * directly into the bounded domain corner array.
+     */
+    const RegularGrid3D corner_grid(out_dims);
+
     std::vector<CornerData> corners(total);
     for (std::size_t flat = 0; flat < total; ++flat) {
         CornerData corner{};
@@ -542,7 +570,19 @@ std::vector<CornerData> MotionMapper::build_corner_grid(
                 std::llround((voxel.centroid[i] - domain.limits[0][i]) / cl[i]));
         }
 
-        const auto base_flat = flatten_index(base_index, out_dims, dims);
+        /*
+         * Skip auxiliary voxels whose centers lie outside the bounded marching
+         * corner lattice.
+         *
+         * Those voxels belong to the buffer region that supports weighting, but
+         * they do not own a domain corner and therefore must not participate in
+         * the flattened corner indexing below.
+         */
+        if (!corner_grid.valid(base_index)) {
+            continue;
+        }
+
+        const auto base_flat = corner_grid.element_index(base_index);
         corners[base_flat].owned_voxel_indices.push_back(vi);
 
         const auto& corner = corners[base_flat];
@@ -585,7 +625,18 @@ std::vector<CornerData> MotionMapper::build_corner_grid(
                 lengths[i] = active[i] ? penetration[i] : domain.voxel_size - penetration[i];
                 target[i] += active[i] * pen_flag[i];
             }
-            corners[flatten_index(target, out_dims, dims)].volume +=
+
+            /*
+             * Guard split targets for the same reason as the base index above:
+             * a voxel near the domain boundary can straddle a corner region
+             * outside the bounded marching lattice. That exterior portion is
+             * intentionally discarded instead of indexing past the vector.
+             */
+            if (!corner_grid.valid(target)) {
+                continue;
+            }
+
+            corners[corner_grid.element_index(target)].volume +=
                 lengths[0] * lengths[1] * (dims == 3 ? lengths[2] : 1.0) * voxel.weight;
         }
     }
@@ -650,8 +701,19 @@ MarchingWindowsResult MotionMapper::run(
     }
 
     if (options.build_surface) {
-        throw NotImplementedError(
-            "Surface extraction backend is not implemented yet in the C++ port scaffold");
+        /*
+         * The next native milestone is 3D surface reconstruction from the
+         * already-populated corner field. 2D marching-squares parity is still
+         * deferred, so keep that contract explicit for callers.
+         */
+        if (domain.dimension == Dimension::D2) {
+            throw NotImplementedError("2D surface extraction is not implemented yet in the C++ port");
+        }
+
+        result.surface_mesh = marching_cubes::extract_surface_mesh_3d(
+            result.domain,
+            result.corner_fill_fractions,
+            result.corner_dims);
     }
     if (options.build_flux_association) {
         throw NotImplementedError(
