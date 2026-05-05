@@ -62,12 +62,6 @@ endif()
 # PUBLIC propagates the requirement to anything that links isthmus_cpp.
 target_compile_features(isthmus_cpp PUBLIC cxx_std_20)
 
-if(ISTHMUS_BUILD_EXAMPLES)
-    # Example executable that links against the library.
-    add_executable(isthmus_corner_demo cpp/examples/corner_demo.cpp)
-    target_link_libraries(isthmus_corner_demo PRIVATE isthmus_cpp)
-endif()
-
 if(ISTHMUS_BUILD_TESTS)
     # Enable CTest integration in this build tree.
     enable_testing()
@@ -85,3 +79,64 @@ if(ISTHMUS_BUILD_TESTS)
     # Register the test with CTest so `ctest` will run it.
     add_test(NAME isthmus_cpp_tests COMMAND isthmus_cpp_tests)
 endif()
+
+# Generate versioned package metadata in the build tree so standalone example
+# projects can consume a locally built ISTHMUS++ tree without installation.
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/isthmus_cppConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+# Configure the package entry point that will load the exported target set for
+# both build-tree and install-tree consumers.
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cpp/cmake/isthmus_cppConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/isthmus_cppConfig.cmake"
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/isthmus_cpp"
+)
+
+# Export the build-tree targets directly so external standalone examples can
+# point `isthmus_cpp_DIR` at the main build directory and immediately link the
+# already-built library target.
+export(
+    TARGETS isthmus_cpp
+    FILE "${CMAKE_CURRENT_BINARY_DIR}/isthmus_cppTargets.cmake"
+    NAMESPACE isthmus_cpp::
+)
+
+# Install the library and publish the exported target set so external projects
+# can locate ISTHMUS++ through a normal `find_package()` call after install.
+install(
+    TARGETS isthmus_cpp
+    EXPORT isthmus_cppTargets
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+
+# Install the public headers exactly as they are laid out under `cpp/include`
+# so downstream includes stay unchanged.
+install(
+    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cpp/include/"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+)
+
+# Install the generated package entry points and exported targets into the
+# conventional CMake package directory.
+install(
+    FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/isthmus_cppConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/isthmus_cppConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/isthmus_cpp"
+)
+
+# Install the exported target definitions with a namespace so consumers link
+# via `isthmus_cpp::isthmus_cpp`.
+install(
+    EXPORT isthmus_cppTargets
+    FILE isthmus_cppTargets.cmake
+    NAMESPACE isthmus_cpp::
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/isthmus_cpp"
+)
+
