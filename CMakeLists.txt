@@ -3,6 +3,11 @@ cmake_minimum_required(VERSION 3.22)
 
 project(isthmus_cpp VERSION 0.1.0 LANGUAGES CXX)
 
+# Load standard install-directory variables and helper utilities for generating
+# a consumable CMake package configuration for downstream users.
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 # Request C++20 for all targets in this project.
 # - REQUIRED: fail configuration if the compiler can't do C++20
 # - EXTENSIONS OFF: prefer -std=c++20 over -std=gnu++20
@@ -13,7 +18,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # User-configurable toggles (similar to Makefile variables).
 # Example: cmake -S . -B build -DISTHMUS_BUILD_TESTS=OFF
 option(ISTHMUS_BUILD_TESTS "Build C++ tests" ON)
-option(ISTHMUS_BUILD_EXAMPLES "Build C++ examples" ON)
 
 # Define the core library target.
 # CMake will compile these sources and produce a library (static or shared,
