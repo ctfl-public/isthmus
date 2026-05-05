@@ -5,6 +5,10 @@
 int main() {
     using namespace isthmus;
 
+    /**
+     * Configure a simple 2D marching-windows domain that is large enough to
+     * hold the synthetic voxelized square built below.
+     */
     DomainConfig domain;
     domain.dimension = Dimension::D2;
     domain.limits = {{{-5.0, -5.0, 0.0}, {5.0, 5.0, 0.0}}};
@@ -12,7 +16,10 @@ int main() {
     domain.voxel_size = 2.0 / 3.0;
     domain.weighting = true;
 
-    // Build a small synthetic voxelized square and run the implemented motion-mapping stages on it.
+    /**
+     * Build a small synthetic voxelized square and run the implemented
+     * motion-mapping stages on it.
+     */
     VoxelSet voxels;
     std::size_t original_id = 0;
     for (int j = 0; j < 8; ++j) {
@@ -28,6 +35,10 @@ int main() {
         }
     }
 
+    /**
+     * Execute the native pipeline and report a compact summary that confirms
+     * the example ran and produced meaningful reconstruction data.
+     */
     MarchingWindows mw;
     const auto result = mw.run(domain, voxels);
     std::cout << "Computed " << result.corner_fill_fractions.size()
