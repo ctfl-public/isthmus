@@ -6,6 +6,7 @@ __pycache__/
 testing/test_results
 V_and_V/fluxMapping/results
 build*
+cpp/examples/*/build/
 env
 .venv
 docs
