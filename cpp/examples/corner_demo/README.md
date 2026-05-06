@@ -1,8 +1,6 @@
 # Corner Demo
 
-This standalone example constructs a simple 2D voxelized square, runs the
-native ISTHMUS++ marching-windows pipeline, and prints how many corner fill
-fractions and surface voxels were produced.
+This standalone example constructs a simple 2D voxelized square, runs the ISTHMUS marching-windows pipeline, and prints how many corner fill fractions and surface voxels were produced.
 
 ## What It Demonstrates
 
@@ -23,19 +21,31 @@ cmake --build build-wsl -j
 That build generates a CMake package in `build-wsl/` that this standalone
 example can consume directly.
 
-## Build This Example Against The Build Tree
+## Build With CMake
 
 From the repository root:
 
 ```bash
-cmake -S cpp/examples/corner_demo -B build-corner-demo -Disthmus_cpp_DIR="$PWD/build-wsl"
-cmake --build build-corner-demo -j
+cmake -S cpp/examples/corner_demo -B cpp/examples/corner_demo/build -Disthmus_cpp_DIR="$PWD/build-wsl"
+cmake --build cpp/examples/corner_demo/build -j
 ```
+
+## Build With Make
+
+From the repository root:
+
+```bash
+make -C cpp/examples/corner_demo
+```
+
+The local `Makefile` links against `build-wsl/libisthmus_cpp.a` by default.
+Override `ISTHMUS_BUILD_DIR=/path/to/build` if your native library archive
+lives somewhere else.
 
 ## Run
 
 ```bash
-./build-corner-demo/isthmus_corner_demo
+./cpp/examples/corner_demo/build/isthmus_corner_demo
 ```
 
 ## Use Pattern In Your Own Project

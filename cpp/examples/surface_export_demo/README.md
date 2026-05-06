@@ -23,27 +23,39 @@ cmake --build build-wsl -j
 That build generates a CMake package in `build-wsl/` that this standalone
 example can consume directly.
 
-## Build This Example Against The Build Tree
+## Build With CMake
 
 From the repository root:
 
 ```bash
-cmake -S cpp/examples/surface_export_demo -B build-surface-export-demo -Disthmus_cpp_DIR="$PWD/build-wsl"
-cmake --build build-surface-export-demo -j
+cmake -S cpp/examples/surface_export_demo -B cpp/examples/surface_export_demo/build -Disthmus_cpp_DIR="$PWD/build-wsl"
+cmake --build cpp/examples/surface_export_demo/build -j
 ```
+
+## Build With Make
+
+From the repository root:
+
+```bash
+make -C cpp/examples/surface_export_demo
+```
+
+The local `Makefile` links against `build-wsl/libisthmus_cpp.a` by default.
+Override `ISTHMUS_BUILD_DIR=/path/to/build` if your native library archive
+lives somewhere else.
 
 ## Run
 
 Use the default output directory:
 
 ```bash
-./build-surface-export-demo/isthmus_surface_export_demo
+./cpp/examples/surface_export_demo/build/isthmus_surface_export_demo
 ```
 
 Write into a caller-selected output directory:
 
 ```bash
-./build-surface-export-demo/isthmus_surface_export_demo /tmp/isthmus-surface-demo
+./cpp/examples/surface_export_demo/build/isthmus_surface_export_demo /tmp/isthmus-surface-demo
 ```
 
 ## Use Pattern In Your Own Project
