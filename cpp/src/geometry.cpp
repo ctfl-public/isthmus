@@ -1,5 +1,5 @@
 /*
- * Geometric kernels used by the native ISTHMUS implementation.
+ * Geometric kernels used by the ISTHMUS implementation.
  *
  * These functions support two later stages of the overall algorithm:
  * surface reconstruction and flux mapping. The current code already uses them

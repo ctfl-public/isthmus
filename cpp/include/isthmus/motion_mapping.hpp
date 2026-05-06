@@ -8,7 +8,7 @@
 namespace isthmus {
 
 /*
- * Implements the motion-mapping stages that are already available natively.
+ * Implements the motion-mapping stages that are already available.
  *
  * The current implementation stops after generating the corner fill field that
  * later surface extraction will consume. Even so, the code already performs the

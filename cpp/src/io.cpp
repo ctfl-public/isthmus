@@ -82,7 +82,7 @@ void write_sparta_surface(
 }
 
 /*
- * Export the native triangle mesh in the compact VTK XML PolyData format.
+ * Export the triangle mesh in the compact VTK XML PolyData format.
  *
  * ParaView opens `.vtp` files directly, so this writer gives the new example a
  * zero-dependency path from the in-memory mesh to a desktop visualization tool.

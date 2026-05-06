@@ -8,7 +8,7 @@
 
 namespace isthmus {
 
-// The native implementation currently works in 2D and 3D only.
+// The current implementation works in 2D and 3D only.
 constexpr std::size_t kMaxDims = 3;
 
 enum class Dimension : std::size_t {
@@ -21,7 +21,7 @@ enum class Dimension : std::size_t {
  * is already implemented.
  *
  * `build_surface` asks the library to run the surface extraction stage once a
- * native marching-cubes or marching-squares backend exists.
+ * marching-cubes or marching-squares backend exists.
  * `build_flux_association` asks the library to compute surface-element to
  * voxel ownership fractions once flux mapping is available.
  * `write_diagnostics` is reserved for future structured debug output.
@@ -55,7 +55,7 @@ struct DomainConfig {
 /*
  * Represents one occupied voxel from the caller's solid model.
  *
- * The native code expects voxel locations as centroids in physical space, not
+ * The code expects voxel locations as centroids in physical space, not
  * as integer lattice indices.
  */
 struct VoxelRecord {
@@ -72,7 +72,7 @@ struct VoxelSet {
 /*
  * Surface connectivity produced by the reconstruction stage.
  *
- * The current native code does not populate this yet, but the structure is
+ * The current code does not populate this yet, but the structure is
  * part of the stable result shape so downstream code can be written against it.
  */
 struct SurfaceMesh {
@@ -114,7 +114,7 @@ struct SurfaceVoxelInfo {
 };
 
 /*
- * Complete in-memory result of a native MarchingWindows run.
+ * Complete in-memory result of a MarchingWindows run.
  *
  * Today the reliably populated outputs are the validated domain, the corner
  * fill fractions, the dimensions of that corner field, and the list of surface

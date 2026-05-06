@@ -1,5 +1,5 @@
 /*
- * Internal 3D flux-mapping helpers for the native ISTHMUS port.
+ * Internal 3D flux-mapping helpers for ISTHMUS.
  *
  * This header stays private to the implementation because it depends on
  * internal voxel-grid data structures that are not part of the public API.

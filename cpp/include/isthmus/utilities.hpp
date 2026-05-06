@@ -1,4 +1,4 @@
-// Reusable native helpers for file and volume workflows.
+// Reusable helpers for file and volume workflows.
 #pragma once
 
 #include <filesystem>
@@ -49,9 +49,9 @@ VoxelSliceResult tiff_slicer(
 
 /*
  * Parse the legacy triangle-to-voxel ownership file format back into the
- * native in-memory association structure.
+ * in-memory association structure.
  *
- * This exists so native tools and examples can round-trip the same ownership
+ * This exists so tools and examples can round-trip the same ownership
  * artifacts written by the legacy association format.
  */
 FluxAssociation read_flux_association(const std::filesystem::path& path);

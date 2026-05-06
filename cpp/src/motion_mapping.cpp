@@ -1,5 +1,5 @@
 /*
- * Motion-mapping stages that are already implemented natively.
+ * Motion-mapping stages that are currently implemented.
  *
  * This file covers the preparation work that marching windows performs before
  * surface extraction: validating the domain, expanding sparse occupied voxels
@@ -728,11 +728,11 @@ std::vector<SurfaceVoxelInfo> MotionMapper::collect_surface_voxels(const std::ve
 }
 
 /*
- * Execute the native motion-mapping stages that are currently available.
+ * Execute the motion-mapping stages that are currently available.
  *
  * The result already contains the validated domain, the corner fill field, and
  * the surface voxels. If the caller requests later stages such as surface
- * extraction or flux mapping, the function now runs the available native 3D
+ * extraction or flux mapping, the function now runs the available 3D
  * backends and keeps unsupported 2D stages explicit.
  */
 MarchingWindowsResult MotionMapper::run(
@@ -761,7 +761,7 @@ MarchingWindowsResult MotionMapper::run(
 
     /*
      * Flux mapping depends on having an extracted surface mesh, so requesting
-     * ownership implies that the native 3D surface stage must also run.
+        * ownership implies that the 3D surface stage must also run.
      */
     const bool need_surface_mesh = options.build_surface || options.build_flux_association;
     if (need_surface_mesh) {
@@ -771,7 +771,7 @@ MarchingWindowsResult MotionMapper::run(
          * still deferred, so keep that contract explicit for callers.
          */
         if (domain.dimension == Dimension::D2) {
-            throw NotImplementedError("2D surface extraction is not implemented yet in native ISTHMUS");
+            throw NotImplementedError("2D surface extraction is not implemented in ISTHMUS yet");
         }
 
         result.surface_mesh = marching_cubes::extract_surface_mesh_3d(
@@ -789,11 +789,11 @@ MarchingWindowsResult MotionMapper::run(
     }
     if (options.build_flux_association) {
         /*
-         * Keep the contract explicit for 2D callers while allowing the native
+         * Keep the contract explicit for 2D callers while allowing the
          * 3D ownership path to populate triangle-to-voxel fractions.
          */
         if (domain.dimension == Dimension::D2) {
-            throw NotImplementedError("2D flux mapping is not implemented yet in native ISTHMUS");
+            throw NotImplementedError("2D flux mapping is not implemented in ISTHMUS yet");
         }
         result.flux_association = flux_mapping::build_flux_association_3d(
             result.domain,

@@ -1,9 +1,9 @@
 /*
- * Native 3D surface-mesh cleanup for the ISTHMUS pipeline.
+ * 3D surface-mesh cleanup for the ISTHMUS pipeline.
  *
  * This file merges duplicate vertices, drops repeated-vertex faces, and
  * repairs a narrow class of degenerate-triangle connectivity failures so the
- * native mesh is robust enough for flux mapping and production-scale ablation
+ * mesh is robust enough for flux mapping and production-scale ablation
  * runs.
  */
 #include "mesh_cleanup.hpp"

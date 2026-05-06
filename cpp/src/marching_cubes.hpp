@@ -1,5 +1,5 @@
 /*
- * Internal 3D marching-cubes helpers for the native ISTHMUS port.
+ * Internal 3D marching-cubes helpers for ISTHMUS.
  *
  * This header is intentionally private to the implementation. Public headers
  * that downstream callers include live under `cpp/include/isthmus`, while this
@@ -17,7 +17,7 @@ namespace isthmus::marching_cubes {
 /*
  * Reconstruct the 0.5 isosurface from the already-computed corner fill field.
  *
- * The input scalar field uses the native x-fastest flattened layout described
+ * The input scalar field uses the x-fastest flattened layout described
  * by `corner_dims`. The returned mesh is expressed directly in physical
  * coordinates so downstream callers and writers do not need any additional
  * index-space transformation.

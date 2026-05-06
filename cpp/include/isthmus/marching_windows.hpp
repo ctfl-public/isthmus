@@ -6,11 +6,11 @@
 namespace isthmus {
 
 /*
- * Public entry point for the native library.
+ * Public entry point for the library.
  *
  * A caller provides the marching-windows domain and a set of occupied voxel
  * centroids. The class then executes the implemented algorithm stages and
- * returns all results in memory so downstream C++ codes can consume them
+ * returns all results in memory so downstream codes can consume them
  * without going through intermediate files.
  */
 class MarchingWindows {

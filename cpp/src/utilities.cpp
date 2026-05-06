@@ -30,7 +30,7 @@ struct TiffPageInfo {
 
 /*
  * This in-memory payload keeps the narrow TIFF data in a regular `(z, y, x)`
- * indexing order for the native volume helpers.
+ * indexing order for the volume helpers.
  */
 struct BinaryTiffVolume {
     std::array<std::size_t, 3> dims{{0u, 0u, 0u}};
@@ -144,7 +144,7 @@ std::vector<std::uint32_t> read_tiff_integer_values(
 
 /*
  * Parse one image-file directory from the narrow TIFF subset used by the
- * bundled single-phase workflow and the native utility tests.
+ * bundled single-phase workflow and the utility tests.
  */
 TiffPageInfo parse_tiff_page(
     const std::vector<std::uint8_t>& bytes,

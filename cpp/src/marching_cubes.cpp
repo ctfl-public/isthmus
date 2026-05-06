@@ -1,11 +1,9 @@
 /*
- * Internal Lewiner marching-cubes surface reconstruction for the native
- * ISTHMUS port.
+ * Internal Lewiner marching-cubes surface reconstruction for ISTHMUS.
  *
- * This implementation ports the bundled Cython Lewiner backend into native
- * C++ so the 3D surface path follows the same topology-preserving case logic
- * as the Python reference implementation. The public C++ API remains simple:
- * the caller still receives only vertices and triangles in physical space.
+ * This implementation embeds the Lewiner topology-preserving case logic
+ * directly while keeping the public API simple: the caller still
+ * receives only vertices and triangles in physical space.
  */
 #include "marching_cubes.hpp"
 
@@ -33,8 +31,7 @@ namespace {
 constexpr double kFloatEpsilon = 2.2204460492503131e-16;
 
 /*
- * Small helpers mirror the tiny inline utilities from the Cython code so the
- * translation stays mechanically close to the reference implementation.
+ * Small helpers keep the low-level numeric operations compact and explicit.
  */
 double dabs(double value) {
     return value >= 0.0 ? value : -value;
@@ -43,8 +40,8 @@ double dabs(double value) {
 /*
  * Decode base64-encoded lookup tables from the bundled generated header.
  *
- * The Python implementation stores the large Lewiner LUTs in compact base64
- * form. The native C++ port mirrors that packaging and decodes once at startup.
+ * The large Lewiner LUTs are stored in compact base64 form and decoded once
+ * at startup.
  */
 std::vector<std::uint8_t> decode_base64(std::string_view text) {
     auto decode_char = [](char c) -> int {
@@ -94,8 +91,8 @@ std::vector<std::uint8_t> decode_base64(std::string_view text) {
 }
 
 /*
- * `Lut` is the C++ counterpart to the Cython `Lut` wrapper. It stores signed
- * bytes and supports 1D, 2D, and 3D indexing with the exact same layout.
+ * `Lut` stores signed bytes and supports 1D, 2D, and 3D indexing with the
+ * layout expected by the Lewiner tables.
  */
 class Lut {
 public:
@@ -123,21 +120,21 @@ public:
           values_(raw_values) {}
 
     /*
-     * Direct 1D indexing mirrors `get1()` from the Cython implementation.
+     * Direct 1D indexing into the decoded lookup storage.
      */
     int get1(int i0) const {
         return values_[static_cast<std::size_t>(i0)];
     }
 
     /*
-     * Direct 2D indexing mirrors `get2()` from the Cython implementation.
+     * Direct 2D indexing into the decoded lookup storage.
      */
     int get2(int i0, int i1) const {
         return values_[static_cast<std::size_t>(i0 * l1_ + i1)];
     }
 
     /*
-     * Direct 3D indexing mirrors `get3()` from the Cython implementation.
+     * Direct 3D indexing into the decoded lookup storage.
      */
     int get3(int i0, int i1, int i2) const {
         return values_[static_cast<std::size_t>(i0 * l1_ * l2_ + i1 * l2_ + i2)];
@@ -151,16 +148,16 @@ private:
 };
 
 /*
- * `LutProvider` keeps the same grouped-access shape as the Cython backend.
+ * `LutProvider` keeps the grouped-access shape used by the Lewiner backend.
  *
- * The generated LUT header provides a single X-macro list, which lets the C++
- * port define and initialize every Lewiner table without hand-copying 48
+ * The generated LUT header provides a single X-macro list, which lets the
+ * implementation define and initialize every Lewiner table without hand-copying 48
  * individual declarations and constructor arguments.
  */
 struct LutProvider {
     /*
-     * The three edge-relative tables are defined inline because they originate
-     * from the Python wrapper around the bundled Lewiner implementation.
+     * The three edge-relative tables are defined inline because they belong to
+     * the compact backend support data rather than the generated LUT bundle.
      */
     Lut edges_rel_x;
     Lut edges_rel_y;
@@ -168,7 +165,7 @@ struct LutProvider {
 
     /*
      * Every remaining table is bundled in the generated header and decoded at
-     * construction time so the port uses the same data as Python.
+     * construction time.
      */
 #define ISTHMUS_DECLARE_LUT(name, rank, dim0, dim1, dim2, data) Lut name;
     ISTHMUS_LEWINER_LUT_LIST(ISTHMUS_DECLARE_LUT)
@@ -219,14 +216,14 @@ const LutProvider& lut_provider() {
 }
 
 /*
- * `Cell` is the direct C++ analogue of the Cython state object. It owns the
- * cube-local scalar state, the face-layer vertex cache, and the output arrays.
+ * `Cell` owns the cube-local scalar state, the face-layer vertex cache, and
+ * the output arrays.
  */
 class Cell {
 public:
     /*
      * The dimensions refer to the scalar volume, not the number of marching
-     * cubes. That matches the Python implementation exactly.
+     * cubes.
      */
     Cell(const LutProvider& luts, int nx, int ny, int nz)
         : luts_(luts),
@@ -347,8 +344,8 @@ public:
     }
 
     /*
-     * Export flattened face indices as triangle triples, applying the same
-     * orientation flip that Python performs for `gradient_direction='descent'`.
+     * Export flattened face indices as triangle triples with the backend's
+     * expected descent-oriented winding.
      */
     std::vector<std::array<std::size_t, 3>> triangles() const {
         std::vector<std::array<std::size_t, 3>> out;
@@ -660,7 +657,7 @@ private:
 };
 
 /*
- * Convert the native flattened x-fastest corner field into the [z][y][x]
+ * Convert the flattened x-fastest corner field into the [z][y][x]
  * access pattern expected by the Lewiner traversal.
  */
 double corner_value(
@@ -673,8 +670,8 @@ double corner_value(
 }
 
 /*
- * The port keeps the ambiguity predicates separate from the case switch so the
- * translation remains readable and can be checked directly against the Cython.
+ * Keep the ambiguity predicates separate from the case switch so the control
+ * flow stays readable.
  */
 int test_face(const Cell& cell, int face) {
     int abs_face = face;
@@ -710,8 +707,8 @@ int test_face(const Cell& cell, int face) {
 }
 
 /*
- * Internal ambiguity resolution follows the Lewiner reference implementation
- * closely because this is where the topology-preserving behavior comes from.
+ * Internal ambiguity resolution follows the Lewiner topology rules closely
+ * because this is where the topology-preserving behavior comes from.
  */
 int test_internal(const Cell& cell, const LutProvider& luts, int mc_case, int config, int subconfig, int s) {
     double t = 0.0;
@@ -856,9 +853,9 @@ int test_internal(const Cell& cell, const LutProvider& luts, int mc_case, int co
 }
 
 /*
- * The large case dispatcher is the heart of the Lewiner topology rules. It is
- * ported directly rather than simplified so ambiguous-case behavior matches
- * the Python implementation.
+ * The large case dispatcher is the heart of the Lewiner topology rules. It
+ * stays direct rather than overly simplified so ambiguous-case behavior
+ * remains stable.
  */
 void the_big_switch(const LutProvider& luts, Cell& cell, int mc_case, int config) {
     int subconfig = 0;
@@ -1084,8 +1081,8 @@ SurfaceMesh extract_surface_mesh_3d(
     const std::array<std::size_t, kMaxDims>& corner_dims,
     double iso_value) {
     /*
-     * The Lewiner backend is still a strict 3D-only stage in the native port,
-     * so invalid dimensions are rejected before any LUT or traversal work.
+     * The Lewiner backend is still a strict 3D-only stage, so invalid
+     * dimensions are rejected before any LUT or traversal work.
      */
     if (domain.dimension != Dimension::D3) {
         throw InvalidInputError("3D surface extraction requires a 3D domain");
@@ -1100,7 +1097,7 @@ SurfaceMesh extract_surface_mesh_3d(
     }
 
     /*
-     * The native corner field is stored in a flattened x-fastest layout, so
+        * The corner field is stored in a flattened x-fastest layout, so
      * its total size must match the supplied lattice dimensions exactly.
      */
     if (corner_fill_fractions.size() != corner_dims[0] * corner_dims[1] * corner_dims[2]) {

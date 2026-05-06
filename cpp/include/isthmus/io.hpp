@@ -1,4 +1,4 @@
-// File writers kept separate from the in-memory C++ algorithm core.
+// File writers kept separate from the in-memory algorithm core.
 #pragma once
 
 #include <filesystem>

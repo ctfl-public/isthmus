@@ -1,9 +1,8 @@
 /*
  * Generated Lewiner marching-cubes lookup-table bundle.
  *
- * This file is derived from the bundled Python LUT asset so the native
- * C++ implementation can reuse the same encoded lookup data without any
- * runtime dependency on Python imports or generated extension modules.
+ * This file packages the encoded lookup data used by the Lewiner
+ * backend without any runtime dependency on generated extension modules.
  */
 #pragma once
 

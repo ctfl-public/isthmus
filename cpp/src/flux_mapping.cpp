@@ -1,5 +1,5 @@
 /*
- * Native 3D flux-mapping implementation for the ISTHMUS pipeline.
+ * 3D flux-mapping implementation for the ISTHMUS pipeline.
  *
  * This stage associates each reconstructed surface triangle with the surface
  * voxels whose exposed faces overlap the triangle when viewed along the
@@ -38,8 +38,8 @@ struct TriangleData {
 /*
  * Convert the public dimension enum into a raw active-dimension count.
  *
- * This helper keeps the cell-binning logic aligned with the rest of the native
- * code, which stores dimensions as enums publicly but uses integers
+ * This helper keeps the cell-binning logic aligned with the rest of the
+ * implementation, which stores dimensions as enums publicly but uses integers
  * internally for loops and indexing.
  */
 std::size_t active_dims(Dimension d) {
@@ -64,7 +64,7 @@ std::array<double, kMaxDims> cell_lengths(const DomainConfig& domain) {
 }
 
 /*
- * Flatten a structured-grid index using the native x-fastest convention.
+ * Flatten a structured-grid index using the x-fastest convention.
  *
  * The ownership stage stores per-cell buckets in flat vectors for cache
  * locality, so this helper converts structured indices into flat positions.

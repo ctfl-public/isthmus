@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
     using namespace isthmus;
 
     /**
-     * Mirror the existing 3D verification setup so the demo produces a tiny
+     * Use the existing 3D verification setup so the demo produces a tiny
      * known-good surface without needing any external voxel input files.
      */
     DomainConfig domain;
