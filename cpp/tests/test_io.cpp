@@ -158,3 +158,46 @@ TEST_CASE(test_write_vtp_surface_end_to_end_serializes_native_surface_mesh) {
 
     std::filesystem::remove(output_path);
 }
+
+TEST_CASE(test_write_flux_association_serializes_expected_legacy_blocks) {
+    using namespace isthmus;
+
+    /*
+     * Case:
+     * Serialize a compact in-memory triangle ownership result using the
+     * legacy flux-association writer.
+     *
+     * Sketch:
+     *   triangle 1 -> voxels {3, 5}
+     *   triangle 2 -> voxel  {9}
+     *
+     * Expected outcome:
+     * The file should contain the expected triangle header and the paired
+     * start/end blocks with one-based element ids and the stored ownership
+     * values.
+     */
+    FluxAssociation association;
+    association.elements = {
+        FluxElementOwnership{0, {3, 5}, {0.25, 0.75}},
+        FluxElementOwnership{1, {9}, {1.0}}
+    };
+
+    const std::filesystem::path output_path =
+        std::filesystem::temp_directory_path() / "isthmus_test_flux_association.dat";
+    std::filesystem::remove(output_path);
+
+    io::write_flux_association(association, Dimension::D3, output_path);
+    CHECK(std::filesystem::exists(output_path));
+
+    const auto contents = read_file(output_path);
+    CHECK(contents.find("2 total triangles") != std::string::npos);
+    CHECK(contents.find("start id 1") != std::string::npos);
+    CHECK(contents.find("    3 0.25") != std::string::npos);
+    CHECK(contents.find("    5 0.75") != std::string::npos);
+    CHECK(contents.find("end id 1") != std::string::npos);
+    CHECK(contents.find("start id 2") != std::string::npos);
+    CHECK(contents.find("    9 1") != std::string::npos);
+    CHECK(contents.find("end id 2") != std::string::npos);
+
+    std::filesystem::remove(output_path);
+}
