@@ -86,7 +86,7 @@ def runSynced(sim_data : SimulationData, solvers : Optional[List[str]] = None, o
         Directory to write synced PVD and optionally link/copy files
     """
     if solvers is None:
-        solvers = list(sim_data.timesteps.keys())
+        solvers = [s for s in sim_data.timesteps.keys() if sim_data.timesteps[s]]
     
     synced_timesteps = sim_data.getSyncedTimesteps(solvers)
     print(f"Found {len(synced_timesteps)} synced timesteps")
