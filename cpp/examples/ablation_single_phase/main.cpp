@@ -19,7 +19,9 @@ namespace {
  * mass that has already been removed from it by prior ablation steps.
  */
 struct AblationVoxelRecord {
+    // Voxel center in domain coordinates, in meters.
     std::array<double, 3> centroid{{0.0, 0.0, 0.0}};
+    // Cumulative mass removed from this voxel across all prior steps, in kg.
     double removed_mass = 0.0;
 };
 
@@ -59,13 +61,13 @@ isthmus::VoxelSet make_voxel_set(const std::vector<AblationVoxelRecord>& state) 
 double compute_volume_fraction(
     const std::vector<double>& corner_fill_fractions,
     const std::array<std::size_t, 3>& cell_counts) {
-    double total = 0.0;
+    double total_fill = 0.0;
     for (const double value : corner_fill_fractions) {
-        total += value;
+        total_fill += value;
     }
 
-    const double denom = static_cast<double>(cell_counts[0] * cell_counts[1] * cell_counts[2]);
-    return total / denom;
+    const double total_cell_count = static_cast<double>(cell_counts[0] * cell_counts[1] * cell_counts[2]);
+    return total_fill / total_cell_count;
 }
 
 /**
@@ -161,7 +163,7 @@ std::size_t count_empty_flux_elements(const isthmus::FluxAssociation& associatio
  * example continues to exercise the tolerant native production path.
  */
 AblationStepStats ablate_voxels(
-    std::vector<AblationVoxelRecord>& state,
+    std::vector<AblationVoxelRecord>& voxel_state,
     const isthmus::FluxAssociation& association,
     double volume_fraction,
     const std::array<std::array<double, 3>, 2>& limits,
@@ -169,18 +171,18 @@ AblationStepStats ablate_voxels(
     double triangle_mass_rate) {
     AblationStepStats stats{};
 
-    const double volume =
+    const double domain_volume =
         (limits[1][0] - limits[0][0]) *
         (limits[1][1] - limits[0][1]) *
         (limits[1][2] - limits[0][2]);
-    const double mass_c = volume_fraction * volume * sample_density;
-    const double mass_per_voxel = mass_c / static_cast<double>(state.size());
+    const double current_material_mass = volume_fraction * domain_volume * sample_density;
+    const double mass_per_voxel = current_material_mass / static_cast<double>(voxel_state.size());
     stats.total_requested_mass =
         triangle_mass_rate * static_cast<double>(association.elements.size());
 
-    std::vector<double> removed_mass(state.size(), 0.0);
-    for (std::size_t i = 0; i < state.size(); ++i) {
-        removed_mass[i] = state[i].removed_mass;
+    std::vector<double> removed_mass(voxel_state.size(), 0.0);
+    for (std::size_t i = 0; i < voxel_state.size(); ++i) {
+        removed_mass[i] = voxel_state[i].removed_mass;
     }
 
     /*
@@ -214,18 +216,18 @@ AblationStepStats ablate_voxels(
      * survivors so later steps continue the recession history correctly.
      */
     std::vector<AblationVoxelRecord> next_state;
-    next_state.reserve(state.size());
-    for (std::size_t i = 0; i < state.size(); ++i) {
+    next_state.reserve(voxel_state.size());
+    for (std::size_t i = 0; i < voxel_state.size(); ++i) {
         if (removed_mass[i] > mass_per_voxel) {
             continue;
         }
 
-        AblationVoxelRecord voxel = state[i];
+        AblationVoxelRecord voxel = voxel_state[i];
         voxel.removed_mass = removed_mass[i];
         next_state.push_back(voxel);
     }
 
-    state = std::move(next_state);
+    voxel_state = std::move(next_state);
     return stats;
 }
 
@@ -244,42 +246,48 @@ int main(int argc, char** argv) {
         : std::filesystem::path("output");
 
     /*
-     * Use the production single-phase physical setup.
+     * Sample configuration
      */
-    constexpr int width = 200;
-    constexpr int height = 100;
-    constexpr int buffer = 5;
-    constexpr std::size_t nsteps = 3;
-    constexpr double voxel_size = 3.3757e-6;
-    constexpr double sample_density = 1800.0;
-    constexpr double default_triangle_mass_rate = 1.5e-14; 
+    constexpr int image_width = 200;    // pixels
+    constexpr int image_height = 100;   // pixels
+    constexpr int buffer = 5;   // pixels of zero-value padding to add around the input image to ensure a closed marching domain
+    constexpr std::size_t n_ablation_steps = 3;
+    constexpr double voxel_size = 3.3757e-6;  // meters per voxel edge
+    constexpr double sample_density = 1800.0;  // kg per cubic meter
+    constexpr double default_triangle_mass_rate = 1.5e-14;  // kg per triangle per step
 
     /*
-     * Allow callers to tune the synthetic constant ablation strength without
-     * having to rebuild the standalone example.
+     * Allow callers to tune the constant ablation without
+     * having to rebuild this example.
      */
     const double triangle_mass_rate = argc > 2
         ? parse_nonnegative_double(argv[2], "triangle_mass_rate")
         : default_triangle_mass_rate;
 
+    /*
+     * Configure the marching windows domain.
+     */
     DomainConfig domain;
     domain.dimension = Dimension::D3;
     domain.limits = {{{-buffer * voxel_size, -buffer * voxel_size, -buffer * voxel_size},
-                      {(height + buffer) * voxel_size,
-                       (width + buffer) * voxel_size,
-                       (width + buffer) * voxel_size}}};
-    domain.cell_counts = {{static_cast<std::size_t>(height),
-                           static_cast<std::size_t>(width),
-                           static_cast<std::size_t>(width)}};
+                      {(image_height + buffer) * voxel_size,
+                       (image_width + buffer) * voxel_size,
+                       (image_width + buffer) * voxel_size}}};
+    domain.cell_counts = {{static_cast<std::size_t>(image_height),
+                           static_cast<std::size_t>(image_width),
+                           static_cast<std::size_t>(image_width)}};
     domain.voxel_size = voxel_size;
     domain.weighting = false;
 
+    /*
+     * Configure the run options.
+     */
     RunOptions options;
     options.build_surface = true;
     options.build_flux_association = true;
 
-    /**
-     * Create the standard output layout inside the caller-selected directory.
+    /*
+     * Create the standard output layout inside the output directory.
      */
     const auto grid_dir = output_dir / "grids";
     const auto voxel_data_dir = output_dir / "voxel_data";
@@ -289,59 +297,81 @@ int main(int argc, char** argv) {
     std::filesystem::create_directories(voxel_tri_dir);
 
     /**
-     * Load the production sample and iterate the native
-     * “surface -> flux -> ablate” loop.
+     * Load the tiff sample into the initial voxel state.
      */
-    const auto initial_voxels =
-        utilities::load_active_voxels_from_tiff(data_dir / "sample1.tif", voxel_size);
-    std::vector<AblationVoxelRecord> state;
-    state.reserve(initial_voxels.voxels.size());
+    const auto initial_voxels = utilities::load_active_voxels_from_tiff(data_dir / "sample1.tif", voxel_size);
+    std::vector<AblationVoxelRecord> voxel_state; // this is the main state vector that gets updated across ablation steps
+    voxel_state.reserve(initial_voxels.voxels.size()); // pre-allocate the state vector
     for (const auto& voxel : initial_voxels.voxels) {
-        state.push_back(AblationVoxelRecord{voxel.centroid, 0.0});
+        // Initialize the voxel_state with zero removed mass since no ablation has occurred yet.
+        voxel_state.push_back(AblationVoxelRecord{voxel.centroid, 0.0});
     }
-    std::cout << "Loaded " << state.size() << " active voxels from "
+    // Report the initial voxel size and configuration
+    std::cout << "Loaded " << voxel_state.size() << " active voxels from "
               << (data_dir / "sample1.tif") << '\n';
     std::cout << "Using constant triangle ablation mass of "
               << triangle_mass_rate << " kg per triangle per step\n";
 
+    /*
+     * Declare the marching windows instance
+     */
     MarchingWindows marching_windows;
 
-    for (std::size_t step = 0; step <= nsteps; ++step) {
-        std::cout << "Step " << step << "/" << nsteps << '\n';
+    /*
+     * Ablation loop:
+     * For each step, 
+     * run marching windows on the current voxel state, 
+     * write all outputs, 
+     * then apply one ablation update to produce the next voxel state. 
+     */
+    for (std::size_t step = 0; step <= n_ablation_steps; ++step) {
+        std::cout << "Step " << step << "/" << n_ablation_steps << '\n';
 
-        const auto result = marching_windows.run(domain, make_voxel_set(state), options);
+        // Run marching windows on the current voxel state
+        const auto step_result = marching_windows.run(domain, make_voxel_set(voxel_state), options);
+        
+        // Compute diagnostics before the ablation update
         const double volume_fraction =
-            compute_volume_fraction(result.corner_fill_fractions, domain.cell_counts);
+            compute_volume_fraction(step_result.corner_fill_fractions, domain.cell_counts);
         const std::size_t empty_flux_count =
-            count_empty_flux_elements(result.flux_association);
+            count_empty_flux_elements(step_result.flux_association);
 
-        write_surface_outputs(grid_dir, result.surface_mesh, step);
+        // Write all outputs for the current step
+        write_surface_outputs(grid_dir, step_result.surface_mesh, step);
         write_voxel_data(
             voxel_data_dir / ("voxel_data_" + std::to_string(step) + ".dat"),
-            state);
+            voxel_state);
         io::write_flux_association(
-            result.flux_association,
+            step_result.flux_association,
             domain.dimension,
             voxel_tri_dir / ("triangle_voxels_" + std::to_string(step) + ".dat"));
         write_volume_fraction(output_dir / "volFrac.dat", volume_fraction);
 
-        std::cout << "  Surface triangles: " << result.surface_mesh.triangles.size() << '\n';
-        std::cout << "  Surface voxels: " << result.surface_voxels.size() << '\n';
+        // Report diagnostics for the current step
+        // "Surface triangles": the number of triangles in the surface mesh
+        // "Surface voxels": the number of voxels that were marked as belonging to the surface
+        // "Empty flux entries": the number of surface triangles that received no voxel ownership
+        // "Volume fraction": the overall material volume fraction computed from the corner-fill field
+        std::cout << "  Surface triangles: " << step_result.surface_mesh.triangles.size() << '\n';
+        std::cout << "  Surface voxels: " << step_result.surface_voxels.size() << '\n';
         std::cout << "  Empty flux entries: " << empty_flux_count << '\n';
         std::cout << "  Volume fraction: " << volume_fraction << '\n';
 
-        if (step == nsteps) {
+        // Skip the ablation update on the last step
+        if (step == n_ablation_steps) {
             continue;
         }
 
+        // Apply one ablation update to produce the next voxel state and report diagnostics for the ablation step
         const auto stats = ablate_voxels(
-            state,
-            result.flux_association,
+            voxel_state,
+            step_result.flux_association,
             volume_fraction,
             domain.limits,
             sample_density,
             triangle_mass_rate);
 
+        // Report ablation diagnostics for the current step
         const double mapped_mass_error_percent = stats.total_requested_mass > 0.0
             ? 100.0 * (stats.total_requested_mass - stats.mapped_mass) / stats.total_requested_mass
             : 0.0;
@@ -353,7 +383,7 @@ int main(int argc, char** argv) {
         std::cout << "  Dropped ablation mass (%): " << dropped_mass_percent << '\n';
         std::cout << "  Mass conservation error after mapped mass (%): "
                   << mapped_mass_error_percent << '\n';
-        std::cout << "  Remaining active voxels after ablation: " << state.size() << '\n';
+        std::cout << "  Remaining active voxels after ablation: " << voxel_state.size() << '\n';
     }
 
     /**
