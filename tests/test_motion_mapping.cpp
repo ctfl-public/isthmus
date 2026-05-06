@@ -7,7 +7,7 @@
 
 #include "isthmus/exceptions.hpp"
 #include "isthmus/marching_windows.hpp"
-#include "../src/marching_cubes.hpp"
+#include "marching_cubes.hpp"
 
 namespace {
 

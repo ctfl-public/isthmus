@@ -34,8 +34,8 @@ cmake --build build-wsl -j
 From the repository root:
 
 ```bash
-cmake -S cpp/examples/ablation_single_phase -B cpp/examples/ablation_single_phase/build -Disthmus_cpp_DIR="$PWD/build-wsl"
-cmake --build cpp/examples/ablation_single_phase/build -j
+cmake -S examples/ablation_single_phase -B examples/ablation_single_phase/build -Disthmus_cpp_DIR="$PWD/build-wsl"
+cmake --build examples/ablation_single_phase/build -j
 ```
 
 ## Build With Make
@@ -43,7 +43,7 @@ cmake --build cpp/examples/ablation_single_phase/build -j
 From the repository root:
 
 ```bash
-make -C cpp/examples/ablation_single_phase
+make -C examples/ablation_single_phase
 ```
 
 The local `Makefile` links against `build-wsl/libisthmus_cpp.a` by default.
@@ -74,4 +74,3 @@ Override the constant per-triangle ablation mass explicitly:
 - The default constant triangle ablation mass is `1.5e-14` kg per triangle per
   step. Pass a different second CLI argument if you want a stronger or weaker
   erosion rate.
-

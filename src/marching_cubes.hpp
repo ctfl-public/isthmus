@@ -2,7 +2,7 @@
  * Internal 3D marching-cubes helpers for ISTHMUS.
  *
  * This header is intentionally private to the implementation. Public headers
- * that downstream callers include live under `cpp/include/isthmus`, while this
+ * that downstream callers include live under `include/isthmus`, while this
  * file stays next to the backend source because it only exists to wire the
  * internal marching-cubes stage into motion mapping.
  */

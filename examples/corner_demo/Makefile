@@ -1,9 +1,9 @@
-# Standalone GNU Make build for the surface-export demo without requiring CMake.
+# Standalone GNU Make build for the corner demo without requiring CMake.
 
-ROOT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../..)
+ROOT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 EXAMPLE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 BUILD_DIR := $(EXAMPLE_DIR)/build
-TARGET := $(BUILD_DIR)/isthmus_surface_export_demo
+TARGET := $(BUILD_DIR)/isthmus_corner_demo
 ISTHMUS_BUILD_DIR ?= $(ROOT_DIR)/build-wsl
 ISTHMUS_LIB := $(ISTHMUS_BUILD_DIR)/libisthmus_cpp.a
 
@@ -14,7 +14,9 @@ OBJECT := $(BUILD_DIR)/main.o
 
 CXX ?= g++
 CXXFLAGS ?= -O2 -std=c++20 -Wall -Wextra -Wpedantic
-CPPFLAGS += -I$(ROOT_DIR)/cpp/include
+# Point the compiler at the public headers now that the native project lives
+# directly at the repository root.
+CPPFLAGS += -I$(ROOT_DIR)/include
 
 .PHONY: all clean run check_isthmus_lib
 

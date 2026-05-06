@@ -1,7 +1,7 @@
 # Standalone GNU Make build for the single-phase ablation demo
 
 # Root of the ISTHMUS++ repository
-ROOT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../..)
+ROOT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 # Directory of this example
 EXAMPLE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # Output directory for compiled object and executable files
@@ -19,8 +19,8 @@ OBJECT := $(BUILD_DIR)/main.o
 # Use g++ by default, but allow override via environment variable
 CXX ?= g++ 
 CXXFLAGS ?= -O2 -std=c++20 -Wall -Wextra -Wpedantic
-# Where to find the ISTHMUS headers
-CPPFLAGS += -I$(ROOT_DIR)/cpp/include
+# Where to find the ISTHMUS headers after promoting the native project to root.
+CPPFLAGS += -I$(ROOT_DIR)/include
 
 .PHONY: all clean run check_isthmus_lib
 

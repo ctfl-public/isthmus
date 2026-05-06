@@ -8,8 +8,8 @@
 
 #include "isthmus/marching_windows.hpp"
 #include "isthmus/voxels.hpp"
-#include "../src/flux_mapping.hpp"
-#include "../src/mesh_cleanup.hpp"
+#include "flux_mapping.hpp"
+#include "mesh_cleanup.hpp"
 
 namespace {
 

@@ -1,7 +1,7 @@
 # C++ Examples
 
 Each example in this directory is a standalone project. Each one keeps its own
-local child build directory at `cpp/examples/<example>/build/`, and each one
+local child build directory at `examples/<example>/build/`, and each one
 also provides a GNU `Makefile` for users who prefer `make` over CMake.
 
 ## Available Examples
@@ -13,8 +13,8 @@ also provides a GNU `Makefile` for users who prefer `make` over CMake.
 - `surface_export_demo/`
   - Builds a 3D mesh-export consumer that writes `.surf` and `.vtp` files.
   - See [`surface_export_demo/README.md`](surface_export_demo/README.md) for build and run steps.
+
 - `ablation_single_phase/`
   - Builds a native single-phase ablation walkthrough.
   - See [`ablation_single_phase/README.md`](ablation_single_phase/README.md) for build and run steps.
-
 

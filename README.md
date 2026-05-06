@@ -3,31 +3,26 @@
 </p>
 
 -----
-# ISTHMUS: **I**nterfacing **S**urface **T**riangles for **H**eterogenous **MU**ltiphysics **S**imulations
+# ISTHMUS: **I**nterfacing **S**urface **T**riangles and voxels for **H**eterogenous **MU**ltiphysics **S**imulations
 ISTHMUS, originally developed at the [Computational Thermophysics and Fluids Laboratory](https://ctfl.engr.uky.edu/) (CFTL) of University of Kentucky, provides a bridge between voxelized geometries and their surface representations. While voxels and pixels are commonly used to approximate solid structures in imaging and simulations, voxelized surfaces fail to capture curved interfaces, creating challenges when modeling fluid flow around them. Isthmus introduces **Marching Windows**, a method to generate accurate surface definitions for voxelized structures and consistently transfer fluxes between the surface mesh and voxels.
 
-ISTHMUS is built for multiphysics simulations involving voxelized solids immersed in fluids, making it especially useful for problems such as fluid–structure interaction and thermochemical material response.
+This repository root now contains the native C++ implementation of ISTHMUS. The C++ library is intended to provide a reusable native interface for downstream solvers while preserving the marching-windows behavior that ISTHMUS relies on.
 
-For examples of the capabilities of ISTHMUS, see the tutorials located in the `examples/` directory.
+For examples of the capabilities of ISTHMUS, see the native demos located in the [`examples/`](examples/) directory.
 The technical details of the algorithm implemented in ISTHMUS are presented in [this](https://arxiv.org/abs/2603.07396) ArXiv document.
 
 ## License
 
-This software is licensed under the MIT License (see `LICENSE` file).
-Please also see `third-party-licenses/` for licensing information on bundled dependencies.
+This software is licensed under the MIT License (see [`LICENSE`](LICENSE) file).
+Please also see [`third-party-licenses/`](third-party-licenses/) for licensing information on bundled dependencies.
 
 ## Table of Contents
 - [System Requirements](#system-requirements)
 - [Installation](#installation)
-    - [Step 1: build environment](#step-1-build-environment)
-        - [Install conda](#install-conda)
-        - [Create the Conda environment](#create-the-conda-environment)
-        - [Activate environment](#activate-environment)
-    - [Step 2: build marching cubes package](#step-2-build-marching-cubes-package)
-    - [Step 3: Add ISTHMUS to `PYTHONPATH`](#step-3-add-isthmus-to-pythonpath)
-    - [Step 4: using GPU acceleration with Numba (optional)](#step-4-using-gpu-acceleration-with-numba-optional)
-        - [Set up CUDA Python](#set-up-cuda-python)
-        - [Test Numba installation](#test-numba-installation)
+    - [Step 1: configure the native build](#step-1-configure-the-native-build)
+    - [Step 2: build ISTHMUS](#step-2-build-isthmus)
+    - [Step 3: run the native tests](#step-3-run-the-native-tests)
+    - [Step 4: use standalone examples](#step-4-use-standalone-examples)
 - [ISTHMUS test](#isthmus-test)
 - [Citing ISTHMUS](#citing-isthmus)
 
@@ -35,106 +30,80 @@ Please also see `third-party-licenses/` for licensing information on bundled dep
 * Feature requests and bugs can be raised on the [Github issue tracker](https://github.com/ctfl-public/isthmus/issues)
 * [Marching windows theory](doc/theory.md)
 * [Technical paper](https://arxiv.org/abs/2603.07396) of the ISTHMUS algorithm
-* [Introductory tutorial](examples/ablation/ablationExample.md)
-* [Verification cases](V_and_V/fluxMapping)
+* [Examples](examples/README.md)
+* [Verification cases](V_and_V/fluxMapping) (Python-based for now)
+* [Legacy Python version](legacy/README.md)
 
 ## System Requirements
 
+- A C++20-capable compiler.
+- CMake 3.22 or newer.
 - Memory needs scale with voxel grid size.
-- Optional GPU (Numba CUDA, does not work on MacOS):
-    - NVIDIA GPU + driver compatible with the selected CUDA runtime
-    - Numba/llvmlite pair (e.g., Numba ~0.55.1 with llvmlite ~0.38.0)
+- Optional:
+    - GNU Make for the standalone example Makefiles.
+    - A Linux-like environment if you want to follow the exact command examples below.
 
 ## Installation
 
-### Step 1: build environment
-To work with ISTHMUS, using `conda` (`miniconda` is fine too) along with the virtual environments shipped in the `envs` folder of this repository is highly recommended to avoid package dependency headaches.
-If insisting of not using conda, you need to install the `numba` package and its dependencies manually and solve any conflicts.
+### Step 1: configure the native build
 
-#### Install conda
-To test whether it is installed, run `conda --version` from terminal to check the current version. If not, conda can be installed by following the instructions
-[here](https://docs.anaconda.com/anaconda/install/index.html).
-
-> **Note:** Using HPC, load conda module using your administrator guidelines, for example, on University of Kentucky's Lipscomb Compute Cluster (LCC) use: 
-> ```bash
-> module load ccs/anaconda/3
-> ```
-
-#### Create the Conda environment:
-To install the default virtual environment for ISTHMUS, run:
+Generate the build system by running:
 ```bash
-conda env create -n <your_env_name> -f envs/environment.yml
-# or in custom location using:
-conda env create -p </path/to/your_env_name> -f envs/environment.yml
-```
-> **Note:** Several Conda environment YAML files are located in the `envs` folder. Use `environment.yml` for complete environment to build ISTHMUS and utilize GPU acceleration using `Numba` and `CUDA`. Other environment files are listed in below table.
-> 
-> | Environment File | Description |
-> |------------------|-------------|
-> | `environment.yml` | Complete environment that contains cudatoolkit, numba, cython, and marching cubes dependencies. |
-> | `environment_LCC.yml` | Build for LCC, without driver and cudatoolkit. Use `module load ccs/cuda/12.2.0_535.54.03` instead. |
-> | `environment_wout_gpu.yml` | Environment with only cython and marching cubes dependencies. Does not run with GPU acceleration. |
-
-#### Activate environment:
-Once the environment is created, you can activate it for your current shell session by running:
-```bash
-conda activate <your_env_name>
-# or 
-conda activate </path/to/your_env_name>
+cmake -S . -B build-wsl
 ```
 
-### Step 2: build marching cubes package
-The ISTHMUS package includes an open source build of marching cubes which must be compiled before moving forward. 
-It needs these modules: `trimesh`, `lazy_loader`, `numpy`, `cython`, and `scipy`. 
-They should be loaded within any conda environment defined in the above table. 
-To compile, run the following from `src` directory.
+This creates a build tree in `build-wsl/` and prepares the reusable `isthmus_cpp` library target together with its package metadata.
+
+### Step 2: build ISTHMUS
+Compile the library and its native test executable by running:
 ```bash
-python -W ignore setup.py build_ext --inplace
+cmake --build build-wsl -j
 ```
 
-### Step 3: Add ISTHMUS to `PYTHONPATH`
-At the end of your `.bashrc`, add the path to `isthmus/src/` to your `PYTHONPATH` environment variable.
+This build produces:
+
+- the library archive
+- the test executable
+- the generated CMake package files for downstream `find_package(isthmus_cpp)` consumers
+
+### Step 3: run the native tests
+Run the compiled C++ test suite using:
 ```bash
-export PYTHONPATH="/path/to/isthmus/src:$PYTHONPATH"
+ctest --test-dir build-wsl --output-on-failure
 ```
 
-### Step 4: using GPU acceleration with Numba (optional)
-Numba is a python compiler of python code for excution on CUDA-capable GPUs.
-#### Set up CUDA Python
-* Starting from scratch, CUDA python enviroment can be installed by following the instructions 
-[here](https://developer.nvidia.com/how-to-cuda-python), 
+This executes the lightweight native regression suite and prints detailed output for any failing test.
 
-Or
+### Step 4: use standalone examples
+The repository ships native standalone examples in the [`examples/`](examples/) directory.
+These include:
 
-* Simply by loading the complete environment `environment.yml` contains cudatoolkit, numba, cython, and marching cubes dependencies.
+- [`examples/corner_demo/`](examples/corner_demo/)
+- [`examples/surface_export_demo/`](examples/surface_export_demo/)
+- [`examples/ablation_single_phase/`](examples/ablation_single_phase/)
 
-Or
+Each example can be built in one of two ways.
 
-* If running on LCC use `environment_LCC.yml` and load the cuda module using, 
-    ```bash
-    module load ccs/cuda/12.2.0_535.54.03
-    ```
-
-    >  **Note:** Using HPC, you might get out of storage quota. It is recommended to clean old tarballs and caches using `conda clean -a`. If still not working, consider relocating the conda pkgs directory from your $HOME to your #SCRATCH folder (for higher quota), before creating the environment. 
-    > ```bash
-    > conda config --add pkgs_dirs /your/custom/path
-    > ``` 
-
-#### Test Numba installation
-Validate with `check_numba_cuda.sh` (lists GPUs and runs a tiny GPU kernel)
+Build with CMake by pointing the example at the root build tree:
 ```bash
-chmod +x check_numba_cuda.sh
-./check_numba_cuda.sh
+cmake -S examples/ablation_single_phase -B examples/ablation_single_phase/build -Disthmus_cpp_DIR="$PWD/build-wsl"
+cmake --build examples/ablation_single_phase/build -j
 ```
-You should recieve a message contains `All checks passed ✅` at the end. 
 
+Or build with the local GNU Make entrypoint:
+```bash
+make -C examples/ablation_single_phase
+```
+
+The local example `Makefile`s link against `build-wsl/libisthmus_cpp.a` by default.
+Override `ISTHMUS_BUILD_DIR=/path/to/build` if your native library archive lives somewhere else.
 
 ## ISTHMUS test
-To confirm everything is working as expected, change directory to the `tests/` folder and type
+To confirm everything is working as expected, configure and build the repository root, then run
 ```bash
-pytest -v
+ctest --test-dir build-wsl --output-on-failure
 ```
-You should recieve a message indicating that all tests have passed and no errors. If did not install CUDA Python environment, you will see the gpu tests skipped, which is fine.
+You should receive a message indicating that all native tests have passed and no errors were found.
 
 ---------
 
@@ -143,8 +112,7 @@ You should recieve a message indicating that all tests have passed and no errors
 Please cite the following articles when mentioning ISTHMUS in your own papers.
 
 * Huff et al. [A Consistent Interface Reconstruction and Coupling Method for Multiphysics Simulations.](https://arxiv.org/abs/2603.07396) *ArXiv* 2026.
-* Yassin et al. ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations. *SoftwareX* 2026 (under review).
-<!-- * Yassin et al. [ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations.](SOFTWAREX LINK) *SoftwareX* 2026. -->
+* Yassin et al. [ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations.](https://www.sciencedirect.com/science/article/pii/S2352711026001536) *SoftwareX* 2026.
 
 **Bibtex**
 ```bibtex
@@ -157,25 +125,13 @@ Please cite the following articles when mentioning ISTHMUS in your own papers.
   archivePrefix = {arXiv},
   primaryClass  = {physics.flu-dyn}
 }
-@article{yassin2026isthmus_REVIEW,
+@article{yassin2026isthmus,
   title   = {ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations},
   author  = {Yassin, Ahmed H. and Huff, Ethan H. and Mohan Ramu, Vijay B. and Tacchi, Bruno and Am\`erico, Carlos E. and Stoffel, Tyler D. and Poovathingal, Savio J.},
   journal = {SoftwareX},
-  volume  = {},
-  number  = {},
-  doi     = {},
-  year    = {2026},
-  note    = {{, under review}}
+  volume  = {34},
+  number  = {102660},
+  doi     = {10.1016/j.softx.2026.102660},
+  year    = {2026}
   }
 ```
-
-<!-- Source Files (./src)
---------------------
-This is where the main body of the marching cubes is performed,
-and where the pre-compilation of the cython parts are done
-
-Testing Files (./testing)
--------------------------
-This is where the testing script is to verify things like
-geometry validity, quality, etc. -->
-

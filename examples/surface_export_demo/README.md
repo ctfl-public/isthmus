@@ -28,8 +28,8 @@ example can consume directly.
 From the repository root:
 
 ```bash
-cmake -S cpp/examples/surface_export_demo -B cpp/examples/surface_export_demo/build -Disthmus_cpp_DIR="$PWD/build-wsl"
-cmake --build cpp/examples/surface_export_demo/build -j
+cmake -S examples/surface_export_demo -B examples/surface_export_demo/build -Disthmus_cpp_DIR="$PWD/build-wsl"
+cmake --build examples/surface_export_demo/build -j
 ```
 
 ## Build With Make
@@ -37,7 +37,7 @@ cmake --build cpp/examples/surface_export_demo/build -j
 From the repository root:
 
 ```bash
-make -C cpp/examples/surface_export_demo
+make -C examples/surface_export_demo
 ```
 
 The local `Makefile` links against `build-wsl/libisthmus_cpp.a` by default.
@@ -49,13 +49,13 @@ lives somewhere else.
 Use the default output directory:
 
 ```bash
-./cpp/examples/surface_export_demo/build/isthmus_surface_export_demo
+./examples/surface_export_demo/build/isthmus_surface_export_demo
 ```
 
 Write into a caller-selected output directory:
 
 ```bash
-./cpp/examples/surface_export_demo/build/isthmus_surface_export_demo /tmp/isthmus-surface-demo
+./examples/surface_export_demo/build/isthmus_surface_export_demo /tmp/isthmus-surface-demo
 ```
 
 ## Use Pattern In Your Own Project

@@ -23,14 +23,14 @@ option(ISTHMUS_BUILD_TESTS "Build C++ tests" ON)
 # CMake will compile these sources and produce a library (static or shared,
 # depending on the platform/defaults or any future configuration).
 add_library(isthmus_cpp
-    cpp/src/geometry.cpp
-    cpp/src/flux_mapping.cpp
-    cpp/src/mesh_cleanup.cpp
-    cpp/src/motion_mapping.cpp
-    cpp/src/marching_cubes.cpp
-    cpp/src/io.cpp
-    cpp/src/utilities.cpp
-    cpp/src/marching_windows.cpp
+    src/geometry.cpp
+    src/flux_mapping.cpp
+    src/mesh_cleanup.cpp
+    src/motion_mapping.cpp
+    src/marching_cubes.cpp
+    src/io.cpp
+    src/utilities.cpp
+    src/marching_windows.cpp
 )
 
 # Provide a namespaced alias so downstream CMake consumers can link against a
@@ -48,7 +48,7 @@ add_library(isthmus_cpp::isthmus_cpp ALIAS isthmus_cpp)
 # - Install-tree consumers will see the path to the installation include directory (where the headers will be installed).
 target_include_directories(isthmus_cpp
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cpp/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
@@ -72,13 +72,21 @@ if(ISTHMUS_BUILD_TESTS)
     # Test executable built with a tiny custom harness.
     # (Keeps the native build dependency-light: no third-party test framework.)
     add_executable(isthmus_cpp_tests
-        cpp/tests/test_main.cpp
-        cpp/tests/test_geometry.cpp
-        cpp/tests/test_io.cpp
-        cpp/tests/test_mesh_cleanup.cpp
-        cpp/tests/test_motion_mapping.cpp
-        cpp/tests/test_utilities.cpp
+        tests/test_main.cpp
+        tests/test_geometry.cpp
+        tests/test_io.cpp
+        tests/test_mesh_cleanup.cpp
+        tests/test_motion_mapping.cpp
+        tests/test_utilities.cpp
     )
+
+    # Expose the private implementation headers to the regression tests so
+    # they can cover internal helpers that are intentionally not installed as
+    # part of the public API.
+    target_include_directories(isthmus_cpp_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+
     target_link_libraries(isthmus_cpp_tests PRIVATE isthmus_cpp)
 
     # Register the test with CTest so `ctest` will run it.
@@ -96,7 +104,7 @@ write_basic_package_version_file(
 # Configure the package entry point that will load the exported target set for
 # both build-tree and install-tree consumers.
 configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cpp/cmake/isthmus_cppConfig.cmake.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/isthmus_cppConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/isthmus_cppConfig.cmake"
     INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/isthmus_cpp"
 )
@@ -120,10 +128,10 @@ install(
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 
-# Install the public headers exactly as they are laid out under `cpp/include`
+# Install the public headers exactly as they are laid out under `include`
 # so downstream includes stay unchanged.
 install(
-    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cpp/include/"
+    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
 )
 

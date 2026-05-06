@@ -1,6 +1,6 @@
 # Native C++ UML Diagram
 
-This diagram reflects the current native C++ implementation under `cpp/`.
+This diagram reflects the current native C++ implementation at the repository root.
 It focuses on the public entry point, the internal motion-mapping pipeline,
 the grid/result model, and the geometry and IO helpers that support the native
 backend.
