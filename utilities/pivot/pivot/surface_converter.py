@@ -35,9 +35,17 @@ class SurfaceConverter(BaseConverter):
     
     def processSurfaceDirectory(self):
         """Processes surface files in a specified directory"""
+        
         step = self.step
         surf_data_files = self.getFiles(self.surf_data_dir, step)
         surf_geom_files = self.getFiles(self.surf_geom_dir, step)
+        
+        if self.settings.surface_static:
+            surf_geom_file = sorted(self.surf_geom_dir.glob("*"))[0]
+            geom_info = self.processSurfGeometryFile(str(surf_geom_file))
+            iterator = [(f, surf_geom_file) for f in surf_data_files]
+        else:
+            iterator = zip(surf_data_files, surf_geom_files)
         
         num_data_files = len(surf_data_files)
         num_geom_files = len(surf_geom_files)
@@ -54,7 +62,7 @@ class SurfaceConverter(BaseConverter):
             )
 
         for surf_data_file, surf_geom_file in tqdm(
-            zip(surf_data_files, surf_geom_files),
+            iterator,
             desc="Processing surface files", total=len(surf_data_files)):
             geom_info = self.processSurfGeometryFile(str(surf_geom_file))
             timestep_data = self.processSurfDataFile(str(surf_data_file))
