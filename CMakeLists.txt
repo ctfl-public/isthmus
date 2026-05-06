@@ -24,10 +24,11 @@ option(ISTHMUS_BUILD_TESTS "Build C++ tests" ON)
 # depending on the platform/defaults or any future configuration).
 add_library(isthmus_cpp
     cpp/src/geometry.cpp
+    cpp/src/flux_mapping.cpp
+    cpp/src/mesh_cleanup.cpp
     cpp/src/motion_mapping.cpp
     cpp/src/marching_cubes.cpp
     cpp/src/io.cpp
-    cpp/src/mesh_cleanup.cpp
     cpp/src/utilities.cpp
     cpp/src/marching_windows.cpp
 )
@@ -143,4 +144,3 @@ install(
     NAMESPACE isthmus_cpp::
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/isthmus_cpp"
 )
-
