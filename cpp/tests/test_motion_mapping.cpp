@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <set>
 
+#include "isthmus/exceptions.hpp"
 #include "isthmus/marching_windows.hpp"
 #include "../src/marching_cubes.hpp"
 
@@ -423,4 +425,139 @@ TEST_CASE(test_internal_lewiner_backend_handles_ambiguous_case_with_center_verte
 
     CHECK(mesh.vertices.size() == 6);
     CHECK(mesh.triangles.size() == 4);
+}
+
+TEST_CASE(test_3d_flux_request_populates_normalized_triangle_ownership) {
+    using namespace isthmus;
+
+    /*
+     * Case:
+     * Run the native 3D pipeline for a centered 2x2x2 voxel cube while asking
+     * for both surface extraction and triangle-to-voxel ownership.
+     *
+     * Sketch:
+     *   voxel cube -> surface triangles -> normalized voxel fractions
+     *
+     * Expected outcome:
+     * Every extracted triangle should receive a populated ownership record
+     * whose voxel ids and scalar fractions align one-to-one and whose
+     * fractions are finite, non-negative, and normalized to sum to one.
+     */
+    DomainConfig domain;
+    domain.dimension = Dimension::D3;
+    domain.limits = {{{-2.0e-6, -2.0e-6, -2.0e-6}, {2.0e-6, 2.0e-6, 2.0e-6}}};
+    domain.cell_counts = {{4, 4, 4}};
+    domain.weighting = false;
+
+    const double marching_grid_length = 4.0e-6;
+    const double cube_side_length = std::cbrt(0.75) * (marching_grid_length / 4.0);
+    domain.voxel_size = cube_side_length / 2.0;
+
+    RunOptions options;
+    options.build_surface = true;
+    options.build_flux_association = true;
+
+    MarchingWindows mw;
+    const auto result = mw.run(domain, make_voxel_cube(cube_side_length, 2), options);
+
+    CHECK(result.flux_association.elements.size() == result.surface_mesh.triangles.size());
+
+    for (const auto& element : result.flux_association.elements) {
+        CHECK(!element.voxel_ids.empty());
+        CHECK(element.voxel_ids.size() == element.scalar_fractions.size());
+
+        double sum = 0.0;
+        for (const double fraction : element.scalar_fractions) {
+            CHECK(std::isfinite(fraction));
+            CHECK(fraction >= 0.0);
+            sum += fraction;
+        }
+        CHECK_CLOSE(sum, 1.0, 1e-9);
+    }
+}
+
+TEST_CASE(test_3d_flux_request_references_input_voxels_and_shares_some_triangles) {
+    using namespace isthmus;
+
+    /*
+     * Case:
+     * Reuse the larger weighted 8x8x8 cube fixture and inspect the resulting
+     * triangle ownership graph for identifier validity and shared ownership.
+     *
+     * Sketch:
+     *   one diamond triangle may overlap faces from multiple neighboring voxels
+     *
+     * Expected outcome:
+     * Every referenced voxel id should come from the input voxel set, and at
+     * least one triangle should be shared by multiple voxels so the native
+     * path proves it is doing area-based distribution rather than a nearest
+     * triangle-to-single-voxel assignment.
+     */
+    DomainConfig domain;
+    domain.dimension = Dimension::D3;
+    domain.limits = {{{-5.0, -5.0, -5.0}, {5.0, 5.0, 5.0}}};
+    domain.cell_counts = {{10, 10, 10}};
+    domain.voxel_size = 2.0 / 3.0;
+    domain.weighting = true;
+
+    const auto voxels = make_voxel_cube(8.0 * domain.voxel_size, 8);
+    std::set<std::size_t> valid_ids;
+    for (const auto& voxel : voxels.voxels) {
+        valid_ids.insert(voxel.original_id);
+    }
+
+    RunOptions options;
+    options.build_surface = true;
+    options.build_flux_association = true;
+
+    MarchingWindows mw;
+    const auto result = mw.run(domain, voxels, options);
+
+    bool found_shared_triangle = false;
+    for (const auto& element : result.flux_association.elements) {
+        if (element.voxel_ids.size() > 1) {
+            found_shared_triangle = true;
+        }
+        for (const auto voxel_id : element.voxel_ids) {
+            CHECK(valid_ids.count(voxel_id) == 1);
+        }
+    }
+
+    CHECK(found_shared_triangle);
+}
+
+TEST_CASE(test_2d_flux_request_remains_explicitly_unsupported) {
+    using namespace isthmus;
+
+    /*
+     * Case:
+     * Request flux mapping from the 2D native pipeline even though this phase
+     * only adds 3D triangle ownership.
+     *
+     * Sketch:
+     *   2D corner field -> build_flux_association
+     *
+     * Expected outcome:
+     * The solver should reject the request with the documented
+     * NotImplementedError instead of silently returning incomplete ownership.
+     */
+    DomainConfig domain;
+    domain.dimension = Dimension::D2;
+    domain.limits = {{{-5.0, -5.0, 0.0}, {5.0, 5.0, 0.0}}};
+    domain.cell_counts = {{10, 10, 1}};
+    domain.voxel_size = 2.0 / 3.0;
+    domain.weighting = true;
+
+    RunOptions options;
+    options.build_flux_association = true;
+
+    MarchingWindows mw;
+    bool threw_expected = false;
+    try {
+        (void)mw.run(domain, make_voxel_square(domain.voxel_size), options);
+    } catch (const NotImplementedError&) {
+        threw_expected = true;
+    }
+
+    CHECK(threw_expected);
 }
