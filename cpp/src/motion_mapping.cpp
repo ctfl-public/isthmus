@@ -14,7 +14,9 @@
 #include <vector>
 
 #include "isthmus/exceptions.hpp"
+#include "flux_mapping.hpp"
 #include "marching_cubes.hpp"
+#include "mesh_cleanup.hpp"
 
 namespace isthmus {
 
@@ -730,8 +732,8 @@ std::vector<SurfaceVoxelInfo> MotionMapper::collect_surface_voxels(const std::ve
  *
  * The result already contains the validated domain, the corner fill field, and
  * the surface voxels. If the caller requests later stages such as surface
- * extraction or flux mapping, the function fails explicitly until those native
- * backends are added.
+ * extraction or flux mapping, the function now runs the available native 3D
+ * backends and keeps unsupported 2D stages explicit.
  */
 MarchingWindowsResult MotionMapper::run(
     const DomainConfig& domain,
@@ -757,24 +759,46 @@ MarchingWindowsResult MotionMapper::run(
         result.corner_fill_fractions.push_back(corner.volume);
     }
 
-    if (options.build_surface) {
+    /*
+     * Flux mapping depends on having an extracted surface mesh, so requesting
+     * ownership implies that the native 3D surface stage must also run.
+     */
+    const bool need_surface_mesh = options.build_surface || options.build_flux_association;
+    if (need_surface_mesh) {
         /*
-         * The next native milestone is 3D surface reconstruction from the
-         * already-populated corner field. 2D marching-squares parity is still
-         * deferred, so keep that contract explicit for callers.
+         * The implemented surface stage is currently 3D reconstruction from
+         * the already-populated corner field. 2D marching-squares support is
+         * still deferred, so keep that contract explicit for callers.
          */
         if (domain.dimension == Dimension::D2) {
-            throw NotImplementedError("2D surface extraction is not implemented yet in the C++ port");
+            throw NotImplementedError("2D surface extraction is not implemented yet in native ISTHMUS");
         }
 
         result.surface_mesh = marching_cubes::extract_surface_mesh_3d(
             result.domain,
             result.corner_fill_fractions,
             result.corner_dims);
+
+        /*
+         * Clean the raw marching-cubes mesh before any flux mapping or export
+         * work sees it so later stages operate on the repaired surface.
+         */
+        result.surface_mesh = mesh_cleanup::clean_surface_mesh_3d(
+            result.surface_mesh,
+            result.domain.voxel_size);
     }
     if (options.build_flux_association) {
-        throw NotImplementedError(
-            "Flux mapping is not implemented yet in the C++ port scaffold");
+        /*
+         * Keep the contract explicit for 2D callers while allowing the native
+         * 3D ownership path to populate triangle-to-voxel fractions.
+         */
+        if (domain.dimension == Dimension::D2) {
+            throw NotImplementedError("2D flux mapping is not implemented yet in native ISTHMUS");
+        }
+        result.flux_association = flux_mapping::build_flux_association_3d(
+            result.domain,
+            result.surface_mesh,
+            voxel_grid);
     }
 
     return result;
