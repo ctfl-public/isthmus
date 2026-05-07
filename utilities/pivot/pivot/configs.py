@@ -43,6 +43,7 @@ class SurfaceConfig:
     surf_geom_dir: Path
     surface_dt: float
     step: int = field(default=1)
+    surface_static: bool = False
 
     @classmethod
     def from_dict(cls, cfg: dict) -> "SurfaceConfig":
@@ -51,6 +52,7 @@ class SurfaceConfig:
             geom_dir = Path(cfg["surf_geom_dir"])
             dt = float(cfg["surface_dt"])
             step = int(cfg.get("step", 1))  # optional, defaults to 1
+            surface_static = bool(cfg.get("surface_static", False))
         except KeyError as e:
             raise ValueError(f"[surface] missing required key: {e.args[0]}")
 
@@ -64,6 +66,7 @@ class SurfaceConfig:
             surf_geom_dir=geom_dir,
             surface_dt=dt,
             step=step,
+            surface_static=surface_static,
         )
 
 
