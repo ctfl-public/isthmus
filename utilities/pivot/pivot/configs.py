@@ -7,6 +7,7 @@ They contain no file I/O and no TOML parsing logic.
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 # -------------------------
 # Solver configs
@@ -99,6 +100,42 @@ class SolidConfig:
             solid_dt=solid_dt,
             voxel_size=voxel_size,
             step=step,
+        )
+
+
+# -------------------------
+# Filter config
+# -------------------------
+
+@dataclass(frozen=True)
+class FilterConfig:
+    enabled: bool = False
+    slice_axis: Optional[str] = None
+    slice_value: Optional[float] = None
+
+    @classmethod
+    def from_dict(cls, cfg: dict) -> "FilterConfig":
+        enabled = bool(cfg.get("enabled", False))
+
+        if not enabled:
+            return cls()
+
+        slice_axis = cfg.get("slice_axis", None)
+        slice_value = cfg.get("slice_value", None)
+
+        if slice_axis is None:
+            raise ValueError("[filters] 'slice_axis' is required when enabled = true")
+        if slice_axis not in {"x", "y", "z"}:
+            raise ValueError(
+                f"[filters] slice_axis must be 'x', 'y', or 'z', got '{slice_axis}'"
+            )
+        if slice_value is None:
+            raise ValueError("[filters] 'slice_value' is required when enabled = true")
+
+        return cls(
+            enabled=enabled,
+            slice_axis=slice_axis,
+            slice_value=float(slice_value),
         )
 
 
