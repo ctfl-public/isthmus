@@ -89,118 +89,129 @@ class SurfaceConverter(BaseConverter):
     # surface data is associated with surface geometry
     def processSurfGeometryFile(self, filename):
         """Processes a single surface geometry file produced by ISTHMUS at a single timestep."""
-        try:
-            with open(filename, "r") as f:
-                lines = f.readlines()
-        except OSError as e:
-            log.error("Failed to read surface geometry file: %s", filename)
-            raise
-        
         if filename.split(".")[-1] == "surf":
-            # if no step after the . assume its the initial surf geom
             timestep = 0
         else:
             timestep = filename.split(".")[2]
+
         timestep_data = {
-            'filepath' : filename,
-            'timestep' : timestep,
+            'filepath': filename,
+            'timestep': timestep,
             'num_points': None,
-            "num_tris" : None,
+            'num_tris': None,
             'points': None,
             'triangles': None,
-            "triangle_ids": None
+            'triangle_ids': None
         }
-        
-        i = 0 # index
-        while i < len(lines):
-            line = lines[i].strip()
-            
-            if line.startswith("surf file from isthmus"):
-                timestep_data['num_points'] = int(lines[i + 2].strip().split()[0])
-                timestep_data['num_tris'] = int(lines[i + 3].strip().split()[0])
-                
-                if timestep_data['num_points'] is None or timestep_data['num_tris'] is None:
-                    raise ValueError(f"Invalid surface geometry header in {filename}")
-                
-            if line.startswith("Points"):
-                points = []
-                point_ids = []
-                i += 2  # Skip header
-                while len(points) < timestep_data['num_points']:
-                    point_split = lines[i].strip().split()
-                    point_id = int(point_split[0])  # store ID
-                    coords = [float(x) for x in point_split[1:]]  # x, y, z
-                    point_ids.append(point_id)
-                    points.append(coords)
-                    i += 1
-                timestep_data['points'] = np.array(points, dtype=np.float32)
-                timestep_data['point_ids'] = np.array(point_ids, dtype=np.int32)
-                
 
-            if line.startswith("Triangles"):
-                tris = []
-                tri_ids = []
-                i += 2
-                while len(tris) < timestep_data['num_tris']:
-                    tri_split = lines[i].strip().split()
-                    tri_ids.append(int(tri_split[0]))
-                    tris.append([int(x) - 1 for x in tri_split[1:]])
-                    i += 1
-                timestep_data['triangles'] = np.array(tris, dtype=np.int32)
-                timestep_data['triangle_ids'] = np.array(tri_ids, dtype=np.int32)
+        try:
+            with open(filename, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
 
-            i += 1     
+                    # Parse "N points" / "N triangles" / "N surfs" count lines
+                    # Works for both standard SPARTA surf files and ISTHMUS-generated files.
+                    parts = line.split()
+                    if len(parts) == 2 and parts[0].isdigit():
+                        if parts[1] == "points":
+                            timestep_data['num_points'] = int(parts[0])
+                            continue
+                        if parts[1] in ("triangles", "surfs"):
+                            timestep_data['num_tris'] = int(parts[0])
+                            continue
+
+                    if line.startswith("Points"):
+                        next(f)  # blank line after section header
+                        num_points = timestep_data['num_points']
+                        if num_points is None:
+                            raise ValueError(
+                                f"'Points' section reached but point count was not found in header of {filename}"
+                            )
+                        points = np.empty((num_points, 3), dtype=np.float32)
+                        point_ids = np.empty(num_points, dtype=np.int32)
+                        for i in range(num_points):
+                            parts = next(f).strip().split()
+                            point_ids[i] = int(parts[0])
+                            points[i] = parts[1:]
+                        timestep_data['points'] = points
+                        timestep_data['point_ids'] = point_ids
+                        continue
+
+                    if line.startswith("Triangles") or line.startswith("Surfs"):
+                        next(f)  # blank line after section header
+                        num_tris = timestep_data['num_tris']
+                        if num_tris is None:
+                            raise ValueError(
+                                f"'Triangles' section reached but triangle count was not found in header of {filename}"
+                            )
+                        tris = np.empty((num_tris, 3), dtype=np.int32)
+                        tri_ids = np.empty(num_tris, dtype=np.int32)
+                        for i in range(num_tris):
+                            parts = next(f).strip().split()
+                            tri_ids[i] = int(parts[0])
+                            tris[i] = [int(x) - 1 for x in parts[1:]]
+                        timestep_data['triangles'] = tris
+                        timestep_data['triangle_ids'] = tri_ids
+                        continue
+        except OSError:
+            log.error("Failed to read surface geometry file: %s", filename)
+            raise
+
         return timestep_data
     
     def processSurfDataFile(self, filename):
         """Process SPARTA surface data file at a single timestep."""
-        with open(filename, "r") as f:
-            lines = f.readlines()
-            
-        surf_data = None
-            
         timestep_data = {
             'filepath': filename,
             'timestep': None,
             'num_surfs': None,
             'box_bounds': None,
-            "field_items": None}
-        
-        i = 0 # index 
-        while i < len(lines):
-            line = lines[i].strip()
-            
-            if line.startswith(SpartaItems.TIMESTEP):
-                timestep_data["timestep"] = int(lines[i + 1].strip())
-                i += 2
-                continue
-            
-            if line.startswith(SpartaItems.NUM_SURFS):
-                timestep_data['num_surfs'] = int(lines[i + 1].strip())
-                i += 2
-                continue
-            
-            if line.startswith(SpartaItems.BOX_BOUNDS):
-                xbounds = [float(x) for x in lines[i + 1].strip().split()]
-                ybounds = [float(x) for x in lines[i + 2].strip().split()]
-                zbounds = [float(x) for x in lines[i + 3].strip().split()]
-                timestep_data["box_bounds"] = (xbounds, ybounds, zbounds)
-                i += 4
-                continue
-            
-            if line.startswith(SpartaItems.SURFS):
-                items = line.split()
-                timestep_data['field_items'] = items[3:]
-                surf_data = []
-                i += 1 
-                while i < len(lines):
-                    if lines[i].strip().startswith("ITEM:"):
-                        log.warning(f"Unexpected additional ITEM block detected in surface file '{filename}' after first SURFS block. This tool expects exactly one timestep per file. Trailing data will be ignored")
-                        break
-                    surf_data.append([float(x) for x in lines[i].split()])
-                    i += 1
-                timestep_data['surf_data'] = np.array(surf_data, dtype=np.float32)
-                break
+            'field_items': None}
+
+        with open(filename, "r") as f:
+            while True:
+                line = f.readline()
+                if not line:
+                    break
+                line = line.strip()
+
+                if line.startswith(SpartaItems.TIMESTEP):
+                    timestep_data["timestep"] = int(f.readline().strip())
+                    continue
+
+                if line.startswith(SpartaItems.NUM_SURFS):
+                    timestep_data['num_surfs'] = int(f.readline().strip())
+                    continue
+
+                if line.startswith(SpartaItems.BOX_BOUNDS):
+                    xbounds = [float(x) for x in f.readline().strip().split()]
+                    ybounds = [float(x) for x in f.readline().strip().split()]
+                    zbounds = [float(x) for x in f.readline().strip().split()]
+                    timestep_data["box_bounds"] = (xbounds, ybounds, zbounds)
+                    continue
+
+                if line.startswith(SpartaItems.SURFS):
+                    items = line.split()
+                    field_items = items[3:]
+                    timestep_data['field_items'] = field_items
+                    num_surfs = timestep_data['num_surfs']
+                    num_cols = len(field_items) + 1  # +1 for id column not in field_items
+
+                    surf_array = np.empty((num_surfs, num_cols), dtype=np.float32)
+                    for i in range(num_surfs):
+                        surf_array[i] = f.readline().split()
+                    timestep_data['surf_data'] = surf_array
+
+                    for trailing_line in f:
+                        if trailing_line.strip().startswith("ITEM:"):
+                            log.warning(
+                                f"Unexpected additional ITEM block detected in surface file '{filename}' after first SURFS block. "
+                                "This tool expects exactly one timestep per file. Trailing data will be ignored"
+                            )
+                            break
+                    break
 
         return timestep_data
                 
@@ -209,36 +220,39 @@ class SurfaceConverter(BaseConverter):
         points = geom_info['points']
         triangles = geom_info['triangles']
         triangle_ids = geom_info['triangle_ids']
-        
-        # build faces 
-        faces = np.hstack([np.insert(tri, 0, 3) for tri in triangles])
-        
+
+        # build faces — vectorized, avoids one np.insert allocation per triangle
+        n_tris = len(triangles)
+        face_buf = np.empty((n_tris, 4), dtype=np.int32)
+        face_buf[:, 0] = 3
+        face_buf[:, 1:] = triangles
+        faces = face_buf.ravel()
+
         poly = pv.PolyData(points, faces)
-        
-        tri_id_to_cell = {tri_id: idx for idx, tri_id in enumerate(triangle_ids)}
-        
+
         n_cells = poly.n_cells
         field_names = timestep_data['field_items']
         data_array = timestep_data['surf_data']
-        id_index = 0 
-        
-        for name in field_names:
-            poly.cell_data[name] = np.full(n_cells, np.nan, dtype=np.float32)
-            
-        missing = 0
-        for row in data_array:
-            surf_id = int(row[id_index])
-            cell_idx = tri_id_to_cell.get(surf_id)
-            if cell_idx is None:
-                missing += 1
-                continue
-            for field_idx , value in enumerate(row[1:]):
-                name = timestep_data['field_items'][field_idx]
-                poly.cell_data[name][cell_idx] = value
-        
+
+        # Build a direct lookup array: surf_id -> cell index (-1 if absent)
+        max_tri_id = int(triangle_ids.max()) if len(triangle_ids) > 0 else 0
+        id_to_cell = np.full(max_tri_id + 1, -1, dtype=np.int64)
+        id_to_cell[triangle_ids] = np.arange(len(triangle_ids), dtype=np.int64)
+
+        surf_ids = data_array[:, 0].astype(np.int32)
+        in_range = surf_ids <= max_tri_id
+        cell_indices = np.where(in_range, id_to_cell[np.clip(surf_ids, 0, max_tri_id)], -1)
+        valid = cell_indices >= 0
+        missing = int((~valid).sum())
+
+        for field_idx, name in enumerate(field_names):
+            arr = np.full(n_cells, np.nan, dtype=np.float32)
+            arr[cell_indices[valid]] = data_array[valid, field_idx + 1]
+            poly.cell_data[name] = arr
+
         if missing and log.isEnabledFor(logging.DEBUG):
             log.debug("%d surface data entries had no matching triangle (timestep %s)", missing, timestep_data['timestep'])
-                
+
         return poly
         
     def writeSurfVTK(self, timestep_data, poly_data):

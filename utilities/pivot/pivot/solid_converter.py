@@ -49,7 +49,11 @@ class SolidConverter(BaseConverter):
                           file,
                           timestep_data['timestep'],
                           timestep_data['count'])
-                grid = self.createSolidGrid(timestep_data)
+                if self.slice_filter:
+                    timestep_data = self.slice_filter.apply_solid(timestep_data, self.voxel_size)
+                    grid = self.createSolidSlice(timestep_data)
+                else:
+                    grid = self.createSolidGrid(timestep_data)
                 self.writeSolidVTK(grid, timestep_data)
             except Exception as e:
                 log.error("Failed processing solid file %s: %s", file, e)
@@ -60,26 +64,20 @@ class SolidConverter(BaseConverter):
 
     def processSolidFile(self, filepath):
         """Parse solid data CSV file for a single timestep."""
-        
-        # new method to get timesteps for solid
-        with open(filepath, "r") as f:
-            lines = f.readlines()
-        
         accumulated_timestep = None
         csv_start_idx = None
 
-        for i, line in enumerate(lines):
-            line = line.strip()
-            if line == "ITEM: SOLID TIMESTEP":
-                # this timestep doesn't reset / is global 
-                try:
-                    accumulated_timestep = int(lines[i + 1].strip())
-                except (IndexError, ValueError):
-                    raise ValueError(
-                    f"{filepath}: 'ITEM: SOLID TIMESTEP' "
-                    "must be followed by an integer value.")
-                csv_start_idx = i + 2
-                break
+        with open(filepath, "r") as f:
+            for line_num, line in enumerate(f):
+                if line.strip() == "ITEM: SOLID TIMESTEP":
+                    try:
+                        accumulated_timestep = int(next(f).strip())
+                    except (StopIteration, ValueError):
+                        raise ValueError(
+                            f"{filepath}: 'ITEM: SOLID TIMESTEP' "
+                            "must be followed by an integer value.")
+                    csv_start_idx = line_num + 2
+                    break
         
         if accumulated_timestep is None:
             raise ValueError(
@@ -135,22 +133,21 @@ class SolidConverter(BaseConverter):
         ylo, yhi = y_c - half_size, y_c + half_size
         zlo, zhi = z_c - half_size, z_c + half_size
         
-        vertices = np.zeros((n_cells * 8, 3))
-        for i in range(n_cells):
-            base = i * 8
-            vertices[base + 0] = [xlo[i], ylo[i], zlo[i]]
-            vertices[base + 1] = [xhi[i], ylo[i], zlo[i]]
-            vertices[base + 2] = [xhi[i], yhi[i], zlo[i]]
-            vertices[base + 3] = [xlo[i], yhi[i], zlo[i]]
-            vertices[base + 4] = [xlo[i], ylo[i], zhi[i]]
-            vertices[base + 5] = [xhi[i], ylo[i], zhi[i]]
-            vertices[base + 6] = [xhi[i], yhi[i], zhi[i]]
-            vertices[base + 7] = [xlo[i], yhi[i], zhi[i]]
-            
-        cells = np.zeros((n_cells, 9), dtype=np.int64)
-        for i in range(n_cells):
-            base = i * 8
-            cells[i] = [8, base, base+1, base+2, base+3, base+4, base+5, base+6, base+7]
+        verts = np.empty((n_cells, 8, 3), dtype=np.float64)
+        verts[:, 0] = np.column_stack([xlo, ylo, zlo])
+        verts[:, 1] = np.column_stack([xhi, ylo, zlo])
+        verts[:, 2] = np.column_stack([xhi, yhi, zlo])
+        verts[:, 3] = np.column_stack([xlo, yhi, zlo])
+        verts[:, 4] = np.column_stack([xlo, ylo, zhi])
+        verts[:, 5] = np.column_stack([xhi, ylo, zhi])
+        verts[:, 6] = np.column_stack([xhi, yhi, zhi])
+        verts[:, 7] = np.column_stack([xlo, yhi, zhi])
+        vertices = verts.reshape(n_cells * 8, 3)
+
+        base = np.arange(n_cells, dtype=np.int64) * 8
+        cells = np.empty((n_cells, 9), dtype=np.int64)
+        cells[:, 0] = 8
+        cells[:, 1:] = base[:, np.newaxis] + np.arange(8, dtype=np.int64)
             
         cell_types = np.full(n_cells, 12, dtype=np.uint8)
         
@@ -168,6 +165,66 @@ class SolidConverter(BaseConverter):
         
         return grid
 
+    def createSolidSlice(self, timestep_data):
+        """Create a flat 2D VTK surface from a sliced solid dataset.
+
+        Each filtered voxel is projected onto the slice plane as a VTK_QUAD,
+        producing a true flat surface with no artificial thickness.
+        """
+        data = timestep_data['data']
+        field_items = timestep_data['header']
+        n_cells = len(data)
+        axis = self.slice_filter.axis
+        value = np.float32(self.slice_filter.value)
+        half = np.float32(self.voxel_size / 2.0)
+
+        x_c = data[:, 1].astype(np.float32)
+        y_c = data[:, 2].astype(np.float32)
+        z_c = data[:, 3].astype(np.float32)
+        xlo, xhi = x_c - half, x_c + half
+        ylo, yhi = y_c - half, y_c + half
+        zlo, zhi = z_c - half, z_c + half
+        del x_c, y_c, z_c
+
+        verts = np.empty((n_cells, 4, 3), dtype=np.float32)
+        fill = np.full(n_cells, value, dtype=np.float32)
+
+        if axis == 'z':
+            verts[:, 0] = np.column_stack([xlo, ylo, fill])
+            verts[:, 1] = np.column_stack([xhi, ylo, fill])
+            verts[:, 2] = np.column_stack([xhi, yhi, fill])
+            verts[:, 3] = np.column_stack([xlo, yhi, fill])
+        elif axis == 'y':
+            verts[:, 0] = np.column_stack([xlo, fill, zlo])
+            verts[:, 1] = np.column_stack([xhi, fill, zlo])
+            verts[:, 2] = np.column_stack([xhi, fill, zhi])
+            verts[:, 3] = np.column_stack([xlo, fill, zhi])
+        else:  # axis == 'x'
+            verts[:, 0] = np.column_stack([fill, ylo, zlo])
+            verts[:, 1] = np.column_stack([fill, yhi, zlo])
+            verts[:, 2] = np.column_stack([fill, yhi, zhi])
+            verts[:, 3] = np.column_stack([fill, ylo, zhi])
+
+        del xlo, xhi, ylo, yhi, zlo, zhi, fill
+        vertices = verts.reshape(n_cells * 4, 3)
+        del verts
+
+        base = np.arange(n_cells, dtype=np.int32) * 4
+        cells_conn = np.empty((n_cells, 5), dtype=np.int32)
+        cells_conn[:, 0] = 4
+        cells_conn[:, 1:] = base[:, np.newaxis] + np.arange(4, dtype=np.int32)
+        del base
+
+        cell_types = np.full(n_cells, 9, dtype=np.uint8)
+        grid = pv.UnstructuredGrid(cells_conn.ravel(), cell_types, vertices)
+        del cells_conn, vertices
+
+        geom_cols = {"id", "x", "y", "z"}
+        for col_idx, name in enumerate(field_items):
+            if name not in geom_cols:
+                grid.cell_data[name] = data[:, col_idx].astype(np.float32)
+
+        return grid
 
     def writeSolidVTK(self, grid : pv.UnstructuredGrid, timestep_data):
         """
