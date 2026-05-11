@@ -1,5 +1,6 @@
 from pivot.config_manager import ConfigManager
 from pivot.simulation_data import SimulationData
+from pivot.filters import SliceFilter
 import sys
 from pathlib import Path
 
@@ -36,9 +37,17 @@ class BaseConverter:
         self.config = config
         self.sim_data = sim_data
         self.solver_name = solver_name
-        self.settings = getattr(config, solver_name) # returns config.solver instance 
+        self.settings = getattr(config, solver_name) # returns config.solver instance
         self.output = config.output
         self.root_dir = Path(f"{self.__class__.__name__}.py").parent.parent
+
+        f = config.filters
+        self.slice_filter = (
+            SliceFilter(axis=f.slice_axis, value=f.slice_value)
+            if f.enabled else None
+        )
+        if self.slice_filter:
+            log.debug("SliceFilter active: axis=%s value=%s", f.slice_axis, f.slice_value)
         
     @property
     def step(self):

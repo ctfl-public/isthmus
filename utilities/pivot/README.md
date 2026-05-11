@@ -8,6 +8,8 @@ It uses **PyVista**, a lightweight VTK wrapper for Python, to read the raw data 
 Key features:
 
 - Automatic conversion of flow, surface, and solid outputs to VTK formats.
+- **Memory-efficient streaming parser** — files are read line-by-line and written into pre-allocated NumPy arrays; designed to handle very large (5 GB+) flow dumps without loading the whole file into RAM.
+- **Slice filter** — reduce output size dramatically before writing VTK by keeping only cells/triangles that intersect a chosen plane (e.g. the XZ plane at a fixed Y). Useful when full 3D outputs are too large for ParaView.
 - Optional **archiving** of outputs.
 - **Synced timesteps**: generates a PVD file that only references timesteps present for all solvers (flow, surface, solid).  
 - Postprocessing support: you can run synced PVD creation without re-running the full data conversion.  
@@ -95,6 +97,11 @@ step = 1
 [postprocess]
 archive = true
 sync_enabled = true
+
+[filters]
+enabled     = true
+slice_axis  = "y"
+slice_value = 0.0
 ```
 
 ### Parameter details
@@ -103,6 +110,20 @@ sync_enabled = true
     - **flow_dir**: directory where your SPARTA flow dump files are located
     - **flow_dt**: timestep used in SPARTA simulation
     - **field_map**: optional. Maps raw SPARTA field names (e.g. `f_1[1]`) to human-readable names in the VTK output. Only fields you want renamed need to be listed - unmapped fields will keep their original names. Key names must match exactly what appears in your SPARTA dump file header.
+
+    > [!IMPORTANT]
+    > Your SPARTA `dump grid` command **must** include cell geometry columns so PIVOT can construct the VTK mesh. The required columns depend on your simulation dimension:
+    >
+    > | Dimension | Required columns |
+    > |-----------|-----------------|
+    > | 2D | `id xlo xhi ylo yhi` |
+    > | 3D | `id xlo xhi ylo yhi zlo zhi` |
+    >
+    > Example SPARTA dump command (3D):
+    > ```
+    > dump  myDump  grid  all  10000  flow.output.*  id xlo xhi ylo yhi zlo zhi f_1[1] f_1[2] ...
+    > ```
+    > Without `zlo zhi`, PIVOT will treat the data as 2D and the slice filter will not work correctly in 3D.
 
 - **surface**: surface data from SPARTA and ISTHMUS
     - **surf_data_dir**: directory where your `spforces` or `spetot` dumps are located
@@ -120,6 +141,16 @@ sync_enabled = true
 - **postprocess**: optional. Can run **archiving** and/or **synced PVD creation** without reprocessing the raw simulation outputs.
     - **sync_enabled**: if `true` a synced PVD file will be generated after processing. 
     - **archive**: if `true` will automatically generate zipped outputs (if you want to transfer files)
+
+- **filters**: optional. Applied to flow and solid data before VTK output. Primarily intended to reduce output size when full 3D datasets are too large for ParaView.
+    - **enabled**: set to `true` to activate filtering.
+    - **slice_axis**: axis normal to the slice plane — `"x"`, `"y"`, or `"z"`.
+    - **slice_value**: coordinate of the slice plane along that axis (e.g. `0.0`).
+
+  | Solver  | How cells are selected |
+  |---------|------------------------|
+  | Flow    | Cells where `{axis}lo ≤ slice_value ≤ {axis}hi` (exact plane intersection) |
+  | Solid   | Voxels where `\|center − slice_value\| ≤ voxel_size / 2` |
 
 - **step**: optional, default `1`. Determines the stride when listing files — `1` returns all files, `2` returns every other file, `3` every third file, and so on.
 

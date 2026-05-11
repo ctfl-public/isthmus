@@ -1,5 +1,5 @@
 import sys
-from pivot.configs import FlowConfig, SurfaceConfig, SolidConfig, PostprocessConfig
+from pivot.configs import FlowConfig, SurfaceConfig, SolidConfig, PostprocessConfig, FilterConfig
 import logging
 log = logging.getLogger(__name__)
 
@@ -37,6 +37,7 @@ class ConfigManager:
             )
         
         self.postprocess = PostprocessConfig.from_dict(raw.get("postprocess", {}))
+        self.filters = FilterConfig.from_dict(raw.get("filters", {}))
         self.output = raw.get("output", {})
         
         self._log_construction()
@@ -68,6 +69,7 @@ class ConfigManager:
             log.debug("  SolidConfig: not present")
             
         log.debug("  PostprocessConfig: %s", self.postprocess)
+        log.debug("  FilterConfig: %s", self.filters)
         
     def _validate(self):
         log.debug("Starting config validation")
