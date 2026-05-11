@@ -3,7 +3,7 @@
 This standalone example runs the single-phase ablation workflow.
 
 It reconstructs a 3D surface, builds triangle-to-voxel flux ownership, applies
-a constant ablation mass to every triangle, and performs three
+an area-based ablation mass flux to every triangle, and performs three
 ablation updates.
 For each step it writes:
 
@@ -17,7 +17,7 @@ For each step it writes:
 
 - How a consumer project includes `isthmus/marching_windows.hpp`
 - How to use marching windows to reconstruct a surface mesh and flux association from a voxel state
-- How to drive a multi-step ablation loop (with a constant per-triangle mass rate instead of external reaction files)
+- How to drive a multi-step ablation loop (with a constant surface mass flux instead of external reaction files)
 - How to report conservation, dropped-triangle, and dropped-mass diagnostics.
 
 ## Prerequisite: Build ISTHMUS++
@@ -62,15 +62,13 @@ Write into a custom output directory:
 ./ablation_demo {custom_output_directory}
 ```
 
-Override the constant per-triangle ablation mass explicitly:
+Override the constant surface ablation flux explicitly:
 ```bash
-./ablation_demo /tmp/isthmus-ablation-single-phase 2.0e-14
+./ablation_demo /tmp/isthmus-ablation-single-phase 2.0e-3
 ```
 
 ## Notes
 
 - The example writes `.surf` and `.vtp` grid files instead of STL.
 - The example is fully standalone: it loads the bundled `sample1.tif` from this directory.
-- The default constant triangle ablation mass is `1.5e-14` kg per triangle per
-  step. Pass a different second CLI argument if you want a stronger or weaker
-  erosion rate.
+- The second CLI argument is interpreted as a constant surface ablation flux in `kg/m^2/step`.

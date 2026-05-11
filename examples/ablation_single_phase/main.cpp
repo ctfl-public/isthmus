@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "isthmus/io.hpp"
+#include "isthmus/geometry.hpp"
 #include "isthmus/marching_windows.hpp"
 #include "isthmus/utilities.hpp"
 
@@ -155,20 +156,52 @@ std::size_t count_empty_flux_elements(const isthmus::FluxAssociation& associatio
 }
 
 /**
- * Apply one constant-mass ablation step to the current voxel state using the
+ * Compute the physical surface area of every triangle in one reconstructed
+ * surface mesh.
+ *
+ * The returned vector is indexed exactly like `mesh.triangles` so the ablation
+ * update can reuse the native flux-association indexing without extra lookup
+ * structures.
+ */
+std::vector<double> compute_triangle_areas(const isthmus::SurfaceMesh& mesh) {
+    std::vector<double> triangle_areas;
+    triangle_areas.reserve(mesh.triangles.size());
+
+    for (const auto& triangle : mesh.triangles) {
+        /**
+         * Rebuild the explicit vertex triplet expected by the shared geometry
+         * helper so this example stays aligned with the library's own area
+         * convention.
+         */
+        const std::array<std::array<double, 3>, 3> vertices{{
+            mesh.vertices[triangle[0]],
+            mesh.vertices[triangle[1]],
+            mesh.vertices[triangle[2]]
+        }};
+        triangle_areas.push_back(isthmus::geometry::triangle_area(vertices));
+    }
+
+    return triangle_areas;
+}
+
+/**
+ * Apply one area-based ablation step to the current voxel state using the
  * native triangle-to-voxel ownership map.
  *
- * Every triangle requests the same scalar mass removal. Empty ownership entries
- * are treated as dropped triangle mass rather than as hard failures so the
- * example continues to exercise the tolerant native production path.
+ * Every triangle now removes mass in proportion to its physical area, using a
+ * constant surface mass flux in kilograms per square meter per step. Empty
+ * ownership entries are still treated as dropped triangle mass rather than as
+ * hard failures so the example continues to exercise the tolerant native
+ * production path.
  */
 AblationStepStats ablate_voxels(
     std::vector<AblationVoxelRecord>& voxel_state,
+    const isthmus::SurfaceMesh& surface_mesh,
     const isthmus::FluxAssociation& association,
     double volume_fraction,
     const std::array<std::array<double, 3>, 2>& limits,
     double sample_density,
-    double triangle_mass_rate) {
+    double surface_mass_flux) {
     AblationStepStats stats{};
 
     const double domain_volume =
@@ -177,8 +210,13 @@ AblationStepStats ablate_voxels(
         (limits[1][2] - limits[0][2]);
     const double current_material_mass = volume_fraction * domain_volume * sample_density;
     const double mass_per_voxel = current_material_mass / static_cast<double>(voxel_state.size());
-    stats.total_requested_mass =
-        triangle_mass_rate * static_cast<double>(association.elements.size());
+
+    /**
+     * Precompute one physical triangle area per surface element so every
+     * ablation request is scaled by reconstructed surface area instead of raw
+     * triangle count.
+     */
+    const std::vector<double> triangle_areas = compute_triangle_areas(surface_mesh);
 
     std::vector<double> removed_mass(voxel_state.size(), 0.0);
     for (std::size_t i = 0; i < voxel_state.size(); ++i) {
@@ -186,14 +224,23 @@ AblationStepStats ablate_voxels(
     }
 
     /*
-     * Map the synthetic constant triangle mass onto voxels through the native
-     * flux association. Any empty ownership entry counts as dropped mass by
-     * design.
+     * Map the area-scaled triangle mass onto voxels through the native flux
+     * association. Any empty ownership entry counts as dropped mass by design.
      */
     for (std::size_t triangle_id = 0; triangle_id < association.elements.size(); ++triangle_id) {
         const auto& element = association.elements[triangle_id];
+        /**
+         * Guard against unexpected indexing mismatch so a malformed mesh or
+         * association cannot read beyond the reconstructed triangle list.
+         */
+        const double triangle_area = triangle_id < triangle_areas.size()
+            ? triangle_areas[triangle_id]
+            : 0.0;
+        const double triangle_mass = surface_mass_flux * triangle_area;
+        stats.total_requested_mass += triangle_mass;
+
         if (element.voxel_ids.empty()) {
-            stats.dropped_mass += triangle_mass_rate;
+            stats.dropped_mass += triangle_mass;
             ++stats.empty_triangle_count;
             continue;
         }
@@ -201,11 +248,11 @@ AblationStepStats ablate_voxels(
         for (std::size_t i = 0; i < element.voxel_ids.size(); ++i) {
             const auto voxel_id = element.voxel_ids[i];
             if (voxel_id >= removed_mass.size()) {
-                stats.dropped_mass += element.scalar_fractions[i] * triangle_mass_rate;
+                stats.dropped_mass += element.scalar_fractions[i] * triangle_mass;
                 continue;
             }
 
-            const double contribution = element.scalar_fractions[i] * triangle_mass_rate;
+            const double contribution = element.scalar_fractions[i] * triangle_mass;
             removed_mass[voxel_id] += contribution;
             stats.mapped_mass += contribution;
         }
@@ -254,15 +301,21 @@ int main(int argc, char** argv) {
     constexpr std::size_t n_ablation_steps = 3;
     constexpr double voxel_size = 3.3757e-6;  // meters per voxel edge
     constexpr double sample_density = 1800.0;  // kg per cubic meter
-    constexpr double default_triangle_mass_rate = 1.5e-14;  // kg per triangle per step
+    /**
+     * Scale the historical per-triangle default by one voxel-face area so the
+     * updated area-based model starts near the previous magnitude on roughly
+     * voxel-sized surface elements.
+     */
+    constexpr double default_surface_mass_flux =
+        4e-14 / (voxel_size * voxel_size);  // kg per square meter per step
 
     /*
      * Allow callers to tune the constant ablation without
      * having to rebuild this example.
      */
-    const double triangle_mass_rate = argc > 2
-        ? parse_nonnegative_double(argv[2], "triangle_mass_rate")
-        : default_triangle_mass_rate;
+    const double surface_mass_flux = argc > 2
+        ? parse_nonnegative_double(argv[2], "surface_mass_flux")
+        : default_surface_mass_flux;
 
     /*
      * Configure the marching windows domain.
@@ -309,8 +362,8 @@ int main(int argc, char** argv) {
     // Report the initial voxel size and configuration
     std::cout << "Loaded " << voxel_state.size() << " active voxels from "
               << (data_dir / "sample1.tif") << '\n';
-    std::cout << "Using constant triangle ablation mass of "
-              << triangle_mass_rate << " kg per triangle per step\n";
+    std::cout << "Using constant surface ablation flux of "
+              << surface_mass_flux << " kg per square meter per step\n";
 
     /*
      * Declare the marching windows instance
@@ -365,11 +418,12 @@ int main(int argc, char** argv) {
         // Apply one ablation update to produce the next voxel state and report diagnostics for the ablation step
         const auto stats = ablate_voxels(
             voxel_state,
+            step_result.surface_mesh,
             step_result.flux_association,
             volume_fraction,
             domain.limits,
             sample_density,
-            triangle_mass_rate);
+            surface_mass_flux);
 
         // Report ablation diagnostics for the current step
         const double mapped_mass_error_percent = stats.total_requested_mass > 0.0
