@@ -331,6 +331,7 @@ int main(int argc, char** argv) {
                            static_cast<std::size_t>(image_width)}};
     domain.voxel_size = voxel_size;
     domain.weighting = false;
+    domain.iso_value = 0.5;
 
     /*
      * Configure the run options.

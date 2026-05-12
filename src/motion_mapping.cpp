@@ -777,7 +777,8 @@ MarchingWindowsResult MotionMapper::run(
         result.surface_mesh = marching_cubes::extract_surface_mesh_3d(
             result.domain,
             result.corner_fill_fractions,
-            result.corner_dims);
+            result.corner_dims,
+            domain.iso_value);
 
         /*
          * Clean the raw marching-cubes mesh before any flux mapping or export

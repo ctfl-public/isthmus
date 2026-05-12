@@ -20,11 +20,9 @@ enum class Dimension : std::size_t {
  * Requests optional algorithm stages in addition to the corner-fill work that
  * is already implemented.
  *
- * `build_surface` asks the library to run the surface extraction stage once a
- * marching-cubes or marching-squares backend exists.
- * `build_flux_association` asks the library to compute surface-element to
- * voxel ownership fractions once flux mapping is available.
- * `write_diagnostics` is reserved for future structured debug output.
+ * `build_surface`: run the surface extraction 
+ * `build_flux_association`: compute surface-voxel ownership fractions for flux mapping. 
+ * `write_diagnostics`: reserved for future structured debug output.
  */
 struct RunOptions {
     bool build_surface = false;
@@ -50,6 +48,9 @@ struct DomainConfig {
 
     // Whether to apply depth-based weighting to the corner fill field.
     bool weighting = true;
+
+    // Isosurface value for the marching cubes/squares algorithm.
+    double iso_value = 0.5;
 };
 
 /*
