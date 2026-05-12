@@ -13,3 +13,11 @@ docs
 .vscode
 
 output*
+cpp_feature_notes.md
+
+examples/ablation_single_phase/*
+!examples/ablation_single_phase/CMakeLists.txt
+!examples/ablation_single_phase/main.cpp
+!examples/ablation_single_phase/Makefile
+!examples/ablation_single_phase/README.md
+!examples/ablation_single_phase/sample1.tif
