@@ -32,6 +32,7 @@ Please also see [`third-party-licenses/`](third-party-licenses/) for licensing i
 * [Technical paper](https://arxiv.org/abs/2603.07396) of the ISTHMUS algorithm
 * [Examples](examples/README.md)
 * [Verification cases](V_and_V/fluxMapping) (Python-based for now)
+* [Python bindings](python/README.md)
 * [Legacy Python version](legacy/README.md)
 
 ## System Requirements
@@ -44,6 +45,8 @@ Please also see [`third-party-licenses/`](third-party-licenses/) for licensing i
     - A Linux-like environment if you want to follow the exact command examples below.
 
 ## Installation
+
+The steps below cover the native C++ build. For the Python wrapper, including quick install, manual installation, and editable development installs, see [python/README.md](python/README.md).
 
 ### Step 1: configure the native build
 

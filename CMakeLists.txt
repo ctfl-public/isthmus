@@ -33,6 +33,9 @@ add_library(isthmus_cpp
     src/marching_windows.cpp
 )
 
+# Required so the static library can be linked into a shared Python extension.
+set_target_properties(isthmus_cpp PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # Provide a namespaced alias so downstream CMake consumers can link against a
 # stable imported-style target name.
 # It gives the existing target isthmus_cpp a second, namespaced name: isthmus_cpp::isthmus_cpp
@@ -64,6 +67,24 @@ endif()
 # Require C++20 as a *usage requirement*.
 # PUBLIC propagates the requirement to anything that links isthmus_cpp.
 target_compile_features(isthmus_cpp PUBLIC cxx_std_20)
+
+# Python bindings – built when explicitly requested or when scikit-build-core
+# sets the SKBUILD variable during a `pip install .` / `pip wheel .` run.
+option(ISTHMUS_BUILD_PYTHON "Build Python bindings via pybind11" OFF)
+
+if(ISTHMUS_BUILD_PYTHON OR DEFINED SKBUILD)
+    find_package(pybind11 CONFIG QUIET)
+    if(NOT pybind11_FOUND)
+        include(FetchContent)
+        FetchContent_Declare(
+            pybind11
+            GIT_REPOSITORY https://github.com/pybind/pybind11.git
+            GIT_TAG        v2.13.6
+        )
+        FetchContent_MakeAvailable(pybind11)
+    endif()
+    add_subdirectory(python)
+endif()
 
 if(ISTHMUS_BUILD_TESTS)
     # Enable CTest integration in this build tree.
