@@ -4,6 +4,7 @@ from pivot.surface_converter import SurfaceConverter
 from pivot.solid_converter import SolidConverter
 from pivot.simulation_data import SimulationData
 from pivot.archive import archiveOutputs
+from pivot.flow_visualizer import render_flow_contour
 
 import time
 from typing import Optional, List
@@ -71,23 +72,11 @@ def runSolid(solid_c : SolidConverter):
     solid_c.processSolidDirectory()
     solid_c.writeSolidPVD()
     
-def runSynced(sim_data : SimulationData, solvers : Optional[List[str]] = None, output_dir : Optional[Path] = None):
-    """
-    Sync outputs across multiple solvers by writing a combined PVD
-    only for timesteps that exist for all specified solvers.
-    
-    Parameters
-    ----------
-    sim_data : SimulationData
-        The container storing timesteps and output directories
-    solvers : List[str], optional
-        Names of solvers to sync, default = ['flow', 'surface', 'solid']
-    output_dir : Path, optional
-        Directory to write synced PVD and optionally link/copy files
-    """
+def runSynced(sim_data: SimulationData, solvers: Optional[List[str]] = None):
+    """Write a synced PVD for timesteps present across all specified solvers."""
     if solvers is None:
         solvers = [s for s in sim_data.timesteps.keys() if sim_data.timesteps[s]]
-    
+
     synced_timesteps = sim_data.getSyncedTimesteps(solvers)
     print(f"Found {len(synced_timesteps)} synced timesteps")
     sim_data.writeSyncedPVD(solvers)
@@ -122,6 +111,10 @@ def postProcess(config : ConfigManager, sim_data : SimulationData):
         for solver, ts in sim_data.timesteps.items():
             print(f"{solver} timesteps : {ts}")
         runSynced(sim_data)
+
+def runVisualization(config: ConfigManager):
+    """Render a flow contour PNG from the raw dump (skips VTK conversion)."""
+    render_flow_contour(config)
         
 def runOnlyPostProcess(log : logging.Logger, config : ConfigManager, sim_data : SimulationData):
     """Run with only the post processing features"""
@@ -209,6 +202,9 @@ def main():
     if args.postprocessing == "ON":
         log.debug("Running with only postprocessing")
         runOnlyPostProcess(log, config, sim_data)
+    elif config.visualization.enabled:
+        log.debug("Running visualization only")
+        runVisualization(config)
     else:
         log.debug("Starting conversion")
         run(config, sim_data)
