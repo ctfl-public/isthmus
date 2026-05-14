@@ -343,7 +343,8 @@ def _write_contour_png(
     slice_value: Optional[float],
 ):
     import os
-    os.environ.setdefault("MPLCONFIGDIR", "/private/tmp/pivot_matplotlib")
+    import tempfile
+    os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "pivot_matplotlib"))
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
