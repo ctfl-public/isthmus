@@ -327,6 +327,129 @@ def _get_visualization_plane(field_items: list[str], filters) -> dict:
     }
 
 
+def render_convergence_plot(config: ConfigManager) -> Path:
+    """Read every flow file and plot a field statistic vs. timestep."""
+    vis = config.visualization
+    flow = config.flow
+    if flow is None:
+        raise ValueError("[visualization] convergence mode requires a [flow] config section")
+
+    flow_files = sorted(Path(flow.flow_dir).iterdir())[::flow.step]
+    if not flow_files:
+        raise FileNotFoundError(f"No flow files found in {flow.flow_dir}")
+
+    timesteps: list[int] = []
+    stats: dict[str, list[float]] = {m: [] for m in vis.monitor}
+
+    for filepath in tqdm(flow_files, desc="Reading files", unit="files"):
+        ts, values = _read_convergence_column(filepath, vis.field, flow.field_map)
+        if ts is None or values is None:
+            continue
+        timesteps.append(ts)
+        finite = values[np.isfinite(values)]
+        if finite.size == 0:
+            for m in vis.monitor:
+                stats[m].append(np.nan)
+            continue
+        for m in vis.monitor:
+            if m == "mean":
+                stats[m].append(float(finite.mean()))
+            elif m == "max":
+                stats[m].append(float(finite.max()))
+            elif m == "min":
+                stats[m].append(float(finite.min()))
+
+    if not timesteps:
+        raise ValueError("No valid flow files found for convergence plot")
+
+    output = vis.output
+    output.parent.mkdir(parents=True, exist_ok=True)
+    _write_convergence_png(output=output, timesteps=timesteps, stats=stats, field_label=vis.field)
+    print(f"Convergence plot written: {output}")
+    return output
+
+
+def _read_convergence_column(
+    filepath: Path,
+    field: str,
+    field_map: dict[str, str],
+) -> tuple[Optional[int], Optional[np.ndarray]]:
+    """Return (timestep, 1-D float32 array of field values) from a single flow file.
+
+    Only the requested column is loaded — memory cost is num_cells * 4 bytes regardless
+    of how many fields are in the dump.
+    """
+    timestep = None
+    num_cells = None
+    field_items = None
+
+    with open(filepath, "r") as f:
+        while True:
+            line = f.readline()
+            if not line:
+                break
+            stripped = line.strip()
+            if stripped.startswith(SpartaItems.TIMESTEP):
+                timestep = int(f.readline().strip())
+            elif stripped.startswith(SpartaItems.NUM_CELLS):
+                num_cells = int(f.readline().strip())
+            elif stripped.startswith(SpartaItems.BOX_BOUNDS):
+                f.readline(); f.readline(); f.readline()
+            elif stripped.startswith(SpartaItems.CELLS):
+                field_items = stripped.split()[2:]
+                break
+
+        if field_items is None or num_cells is None:
+            log.warning("Could not parse header from %s, skipping.", filepath.name)
+            return None, None
+
+        try:
+            field_col = field_items.index(field)
+        except ValueError:
+            reverse_map = {v: k for k, v in field_map.items()}
+            raw = reverse_map.get(field)
+            if raw is None or raw not in field_items:
+                log.warning(
+                    "Field '%s' not found in %s, skipping.", field, filepath.name
+                )
+                return timestep, None
+            field_col = field_items.index(raw)
+
+        values = np.loadtxt(f, dtype=np.float32, max_rows=num_cells, usecols=(field_col,))
+        values = np.atleast_1d(values)
+
+    return timestep, values
+
+
+def _write_convergence_png(
+    output: Path,
+    timesteps: list[int],
+    stats: dict[str, list[float]],
+    field_label: str,
+):
+    import os
+    import tempfile
+    os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "pivot_matplotlib"))
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    label_map = {"mean": "Spatial mean", "max": "Maximum", "min": "Minimum"}
+    fig, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
+    for key, values in stats.items():
+        ax.plot(timesteps, values, label=label_map.get(key, key), linewidth=1.5)
+
+    ax.set_xlabel("Timestep")
+    ax.set_ylabel(field_label)
+    ax.set_title(f"{field_label} — convergence across timesteps")
+    if len(stats) > 1:
+        ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.savefig(output, dpi=150)
+    plt.close(fig)
+    log.info("Convergence plot written: %s", output)
+
+
 def _write_contour_png(
     output: Path,
     raster: np.ndarray,

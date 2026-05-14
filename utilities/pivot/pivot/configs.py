@@ -41,6 +41,7 @@ class FlowConfig:
 @dataclass(frozen=True)
 class VisualizationConfig:
     enabled: bool = False
+    mode: str = "contour"
     field: str = ""
     output: Path = Path("visualization_output/flow_contour.png")
     timestep: Optional[int] = None
@@ -49,12 +50,17 @@ class VisualizationConfig:
     resolution: tuple[int, int] = (1200, 800)
     cmap: str = "turbo"
     chunk_size: int = 500_000
+    monitor: tuple[str, ...] = ("mean",)
 
     @classmethod
     def from_dict(cls, cfg: dict) -> "VisualizationConfig":
         enabled = bool(cfg.get("enabled", False))
         if not enabled:
             return cls()
+
+        mode = str(cfg.get("mode", "contour"))
+        if mode not in {"contour", "convergence"}:
+            raise ValueError("[visualization] mode must be 'contour' or 'convergence'")
 
         field = cfg.get("field")
         if not field:
@@ -83,8 +89,19 @@ class VisualizationConfig:
         if timestep is not None:
             timestep = int(timestep)
 
+        monitor_raw = cfg.get("monitor", ["mean"])
+        if isinstance(monitor_raw, str):
+            monitor_raw = [monitor_raw]
+        valid_monitors = {"mean", "max", "min"}
+        for m in monitor_raw:
+            if m not in valid_monitors:
+                raise ValueError(
+                    f"[visualization] monitor '{m}' must be one of {sorted(valid_monitors)}"
+                )
+
         return cls(
             enabled=enabled,
+            mode=mode,
             field=str(field),
             output=Path(cfg.get("output", "visualization_output/flow_contour.png")),
             timestep=timestep,
@@ -93,6 +110,7 @@ class VisualizationConfig:
             resolution=(int(resolution[0]), int(resolution[1])),
             cmap=str(cfg.get("cmap", "turbo")),
             chunk_size=chunk_size,
+            monitor=tuple(monitor_raw),
         )
 
 

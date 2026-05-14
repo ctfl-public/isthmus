@@ -4,7 +4,7 @@ from pivot.surface_converter import SurfaceConverter
 from pivot.solid_converter import SolidConverter
 from pivot.simulation_data import SimulationData
 from pivot.archive import archiveOutputs
-from pivot.flow_visualizer import render_flow_contour
+from pivot.flow_visualizer import render_flow_contour, render_convergence_plot
 
 import time
 from typing import Optional, List
@@ -113,8 +113,11 @@ def postProcess(config : ConfigManager, sim_data : SimulationData):
         runSynced(sim_data)
 
 def runVisualization(config: ConfigManager):
-    """Render a flow contour PNG from the raw dump (skips VTK conversion)."""
-    render_flow_contour(config)
+    """Render a contour PNG or convergence plot from raw dumps (skips VTK conversion)."""
+    if config.visualization.mode == "convergence":
+        render_convergence_plot(config)
+    else:
+        render_flow_contour(config)
         
 def runOnlyPostProcess(log : logging.Logger, config : ConfigManager, sim_data : SimulationData):
     """Run with only the post processing features"""
