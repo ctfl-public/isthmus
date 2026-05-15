@@ -39,6 +39,82 @@ class FlowConfig:
 
 
 @dataclass(frozen=True)
+class VisualizationConfig:
+    enabled: bool = False
+    mode: str = "contour"
+    field: str = ""
+    output: Path = Path("visualization_output/flow_contour.png")
+    timestep: Optional[int] = None
+    levels: int = 0
+    value_range: Optional[tuple[float, float]] = None
+    resolution: tuple[int, int] = (1200, 800)
+    cmap: str = "turbo"
+    chunk_size: int = 500_000
+    monitor: tuple[str, ...] = ("mean",)
+
+    @classmethod
+    def from_dict(cls, cfg: dict) -> "VisualizationConfig":
+        enabled = bool(cfg.get("enabled", False))
+        if not enabled:
+            return cls()
+
+        mode = str(cfg.get("mode", "contour"))
+        if mode not in {"contour", "convergence"}:
+            raise ValueError("[visualization] mode must be 'contour' or 'convergence'")
+
+        field = cfg.get("field")
+        if not field:
+            raise ValueError("[visualization] 'field' is required when enabled = true")
+
+        value_range_raw = cfg.get("value_range")
+        if value_range_raw is not None:
+            if len(value_range_raw) != 2:
+                raise ValueError("[visualization] value_range must contain exactly two numbers")
+            value_range = (float(value_range_raw[0]), float(value_range_raw[1]))
+        else:
+            value_range = None
+
+        resolution = cfg.get("resolution", [1200, 800])
+        if len(resolution) != 2:
+            raise ValueError("[visualization] resolution must contain exactly two integers")
+
+        levels = int(cfg.get("levels", 0))
+        chunk_size = int(cfg.get("chunk_size", 500_000))
+        if levels < 0:
+            raise ValueError("[visualization] levels must be >= 0")
+        if chunk_size <= 0:
+            raise ValueError("[visualization] chunk_size must be > 0")
+
+        timestep = cfg.get("timestep")
+        if timestep is not None:
+            timestep = int(timestep)
+
+        monitor_raw = cfg.get("monitor", ["mean"])
+        if isinstance(monitor_raw, str):
+            monitor_raw = [monitor_raw]
+        valid_monitors = {"mean", "max", "min"}
+        for m in monitor_raw:
+            if m not in valid_monitors:
+                raise ValueError(
+                    f"[visualization] monitor '{m}' must be one of {sorted(valid_monitors)}"
+                )
+
+        return cls(
+            enabled=enabled,
+            mode=mode,
+            field=str(field),
+            output=Path(cfg.get("output", "visualization_output/flow_contour.png")),
+            timestep=timestep,
+            levels=levels,
+            value_range=value_range,
+            resolution=(int(resolution[0]), int(resolution[1])),
+            cmap=str(cfg.get("cmap", "turbo")),
+            chunk_size=chunk_size,
+            monitor=tuple(monitor_raw),
+        )
+
+
+@dataclass(frozen=True)
 class SurfaceConfig:
     surf_data_dir: Path
     surf_geom_dir: Path
@@ -147,12 +223,10 @@ class FilterConfig:
 class PostprocessConfig:
     archive: bool = False
     sync_enabled: bool = False
-    vis_enabled: bool = False
 
     @classmethod
     def from_dict(cls, cfg: dict) -> "PostprocessConfig":
         return cls(
             archive=bool(cfg.get("archive", False)),
             sync_enabled=bool(cfg.get("sync_enabled", False)),
-            vis_enabled=bool(cfg.get("vis_enabled", False)),
         )

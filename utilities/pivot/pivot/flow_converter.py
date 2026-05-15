@@ -1,38 +1,24 @@
-# standard modules
+import logging
+import time
+from pathlib import Path
+from typing import Optional
+
 import numpy as np
 import pyvista as pv
-from pathlib import Path
-from typing import *
 from tqdm import tqdm
-import time
-import sys
 
-import logging
-log = logging.getLogger(__name__)
-
-# custom modules
-from pivot.simulation_data import SimulationData
-from pivot.config_manager import ConfigManager
 from pivot.base_converter import BaseConverter
+from pivot.config_manager import ConfigManager
+from pivot.simulation_data import SimulationData
 from pivot.sparta_items import SpartaItems
 
+log = logging.getLogger(__name__)
+
 class FlowConverter(BaseConverter):
-    """Converts SPARTA flow data to VTK.
-    
-    Attributes
-    ----------
-    config : ConfigManager
-        ConfigManager object to get flow settings
-    sim_data : SimulationData
-        SimulationData object to pass timestep information during runtime
-    solver_name = "flow"
-        Used to init parent class BaseConverter
-    required_keys = ["flow_dir", "flow_dt"]
-        Keys that should be set in config.toml before the FlowConverter can initialize
-    
-    """
+    """Converts SPARTA flow data to VTK."""
     def __init__(self, config : ConfigManager, sim_data : SimulationData):
         super().__init__(config, sim_data, solver_name="flow")
+        self.flow_output_ext = ".vtr"
         
     @property
     def flow_dir(self) -> Path:
@@ -101,23 +87,25 @@ class FlowConverter(BaseConverter):
                     continue
 
                 if line.startswith(SpartaItems.CELLS):
-                    items = line.split()
-                    field_items = items[2:]
+                    field_items = line.split()[2:]
                     timestep_data['field_items'] = field_items
                     num_cells = timestep_data['num_cells']
                     num_cols = len(field_items)
 
+                    # Pre-allocate once and fill line-by-line to keep peak memory at
+                    # exactly (num_cells * num_cols * 4) bytes. np.loadtxt accumulates
+                    # Python lists internally and can use several times that on large dumps.
                     cell_array = np.empty((num_cells, num_cols), dtype=np.float32)
-                    for i in tqdm(range(num_cells), desc=f"  Reading {Path(filename).name}", leave=False, unit="cells"):
+                    for i in tqdm(range(num_cells), desc=f"  Reading {filename.name}", leave=False, unit="cells"):
                         cell_array[i] = f.readline().split()
                     timestep_data['cell_array'] = cell_array
 
-                    # check if user output another timestep
                     for trailing_line in f:
                         if trailing_line.strip().startswith("ITEM:"):
                             log.warning(
-                                f"Unexpected additional ITEM block detected in flow file '{filename}' after cell data. "
-                                "This tool expects exactly one timestep per file. Trailing data will be ignored."
+                                "Unexpected additional ITEM block in flow file '%s' after cell data. "
+                                "Trailing data will be ignored.",
+                                filename,
                             )
                             break
                     break
@@ -158,8 +146,108 @@ class FlowConverter(BaseConverter):
         }
                     
 
+    def _attach_rectilinear_cell_data(
+        self,
+        grid: pv.RectilinearGrid,
+        field_names: list[str],
+        field_data: np.ndarray,
+        cell_shape: tuple[int, int, int],
+        cell_bounds: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    ):
+        """Attach SPARTA cell data to a rectilinear lattice."""
+        log.debug("Attaching %d field(s) to rectilinear grid.", len(field_names))
+
+        unmapped_keys = set(self.field_map.keys()) - set(field_names)
+        if unmapped_keys:
+            log.warning("field_map contains key(s) not found in field_names: %s", sorted(unmapped_keys))
+
+        x_start, x_stop, y_start, y_stop, z_start, z_stop = cell_bounds
+        covered = np.zeros(cell_shape, dtype=bool)
+        for ix0, ix1, iy0, iy1, iz0, iz1 in zip(x_start, x_stop, y_start, y_stop, z_start, z_stop):
+            covered[ix0:ix1, iy0:iy1, iz0:iz1] = True
+
+        for idx, name in enumerate(field_names):
+            mapped_name = self.field_map.get(name, name)
+            values = np.full(cell_shape, np.nan, dtype=np.float32)
+            for cell_idx, (ix0, ix1, iy0, iy1, iz0, iz1) in enumerate(
+                zip(x_start, x_stop, y_start, y_stop, z_start, z_stop)
+            ):
+                values[ix0:ix1, iy0:iy1, iz0:iz1] = field_data[cell_idx, idx]
+            grid.cell_data[mapped_name] = values.ravel(order="F")
+
+        if not np.all(covered):
+            hidden_cell = np.uint8(32)
+            grid.cell_data["vtkGhostType"] = np.where(
+                covered.ravel(order="F"),
+                np.uint8(0),
+                hidden_cell,
+            )
+
+        log.debug("Grid cell_data arrays: %s", list(grid.cell_data.keys()))
+
+    def _create_rectilinear_grid(
+        self,
+        field_names: list[str],
+        field_data: np.ndarray,
+        xlo: np.ndarray,
+        xhi: np.ndarray,
+        ylo: np.ndarray,
+        yhi: np.ndarray,
+        zlo: np.ndarray,
+        zhi: np.ndarray,
+        collapsed_axis: Optional[str] = None,
+        collapsed_value: Optional[np.float32] = None,
+    ):
+        """Create a VTK rectilinear grid from axis-aligned SPARTA cell bounds."""
+        if collapsed_axis == "x":
+            x = np.array([collapsed_value], dtype=np.float32)
+        else:
+            x = np.unique(np.concatenate((xlo, xhi))).astype(np.float32)
+
+        if collapsed_axis == "y":
+            y = np.array([collapsed_value], dtype=np.float32)
+        else:
+            y = np.unique(np.concatenate((ylo, yhi))).astype(np.float32)
+
+        if collapsed_axis == "z":
+            z = np.array([collapsed_value], dtype=np.float32)
+        else:
+            z = np.unique(np.concatenate((zlo, zhi))).astype(np.float32)
+
+        cell_shape = (
+            max(len(x) - 1, 1),
+            max(len(y) - 1, 1),
+            max(len(z) - 1, 1),
+        )
+        rect_cells = int(np.prod(cell_shape))
+        expansion = rect_cells / max(len(field_data), 1)
+        log.info(
+            "Flow rectilinear lattice: points=(%d, %d, %d), cells=%d, source_cells=%d, expansion=%.3g",
+            len(x),
+            len(y),
+            len(z),
+            rect_cells,
+            len(field_data),
+            expansion,
+        )
+
+        x_start = np.zeros(len(field_data), dtype=np.int64) if collapsed_axis == "x" else np.searchsorted(x, xlo)
+        x_stop = np.ones(len(field_data), dtype=np.int64) if collapsed_axis == "x" else np.searchsorted(x, xhi)
+        y_start = np.zeros(len(field_data), dtype=np.int64) if collapsed_axis == "y" else np.searchsorted(y, ylo)
+        y_stop = np.ones(len(field_data), dtype=np.int64) if collapsed_axis == "y" else np.searchsorted(y, yhi)
+        z_start = np.zeros(len(field_data), dtype=np.int64) if collapsed_axis == "z" else np.searchsorted(z, zlo)
+        z_stop = np.ones(len(field_data), dtype=np.int64) if collapsed_axis == "z" else np.searchsorted(z, zhi)
+
+        grid = pv.RectilinearGrid(x, y, z)
+        if grid.n_cells != rect_cells:
+            log.debug("PyVista rectilinear grid reports %d cells for logical shape %s.", grid.n_cells, cell_shape)
+
+        cell_bounds = (x_start, x_stop, y_start, y_stop, z_start, z_stop)
+        self._attach_rectilinear_cell_data(grid, field_names, field_data, cell_shape, cell_bounds)
+        return grid
+
     def createFlowGrid(self, timestep_data):
-        """Create VTK unstructured grid from SPARTA flow data."""
+        """Create VTK rectilinear grid from SPARTA flow data."""
         
         field_items = timestep_data['field_items']
         data = timestep_data['cell_array']
@@ -200,64 +288,16 @@ class FlowConverter(BaseConverter):
             field_start_idx = 7
 
         # Extract field data as a copy, then free the full cell_array.
-        # This drops ~2 GB before allocating the vertex/connectivity arrays.
         field_data = data[:, field_start_idx:].copy()
         field_names = field_items[field_start_idx:]
         del data
         timestep_data['cell_array'] = None
-
-        # Create vertices — float32 halves the memory vs float64 (8 verts × 3 coords per cell)
-        verts = np.empty((n_cells, 8, 3), dtype=np.float32)
-        verts[:, 0] = np.column_stack([xlo, ylo, zlo])
-        verts[:, 1] = np.column_stack([xhi, ylo, zlo])
-        verts[:, 2] = np.column_stack([xlo, yhi, zlo])
-        verts[:, 3] = np.column_stack([xhi, yhi, zlo])
-        verts[:, 4] = np.column_stack([xlo, ylo, zhi])
-        verts[:, 5] = np.column_stack([xhi, ylo, zhi])
-        verts[:, 6] = np.column_stack([xlo, yhi, zhi])
-        verts[:, 7] = np.column_stack([xhi, yhi, zhi])
-        vertices = verts.reshape(n_cells * 8, 3)
-        del xlo, ylo, zlo, xhi, yhi, zhi
-
-        # Create cell connectivity — int32 is sufficient for < ~268M total vertices
-        base = np.arange(n_cells, dtype=np.int32) * 8
-        cells = np.empty((n_cells, 9), dtype=np.int32)
-        cells[:, 0] = 8
-        cells[:, 1:] = base[:, np.newaxis] + np.arange(8, dtype=np.int32)
-        del base
-
-        # Cell types (VTK_VOXEL = 11)
-        cell_types = np.full(n_cells, 11, dtype=np.uint8)
-
-        grid = pv.UnstructuredGrid(cells.ravel(), cell_types, vertices)
-        del cells, vertices
-        
-        # Attach field data to grid
-        log.debug("Attaching %d field(s) to grid. field_map has %d entry/entries.", len(field_names), len(self.field_map))
-
-        unmapped_keys = set(self.field_map.keys()) - set(field_names)
-        if unmapped_keys:
-            log.warning("field_map contains key(s) not found in field_names: %s", sorted(unmapped_keys))
-
-        for idx, name in enumerate(field_names):
-            mapped_name = self.field_map.get(name, name)
-            if mapped_name != name:
-                log.debug("  Renaming field '%s' -> '%s'", name, mapped_name)
-            else:
-                log.debug("  Field '%s' (no mapping)", name)
-            grid.cell_data[mapped_name] = field_data[:, idx]
-
-        log.debug("Grid cell_data arrays: %s", list(grid.cell_data.keys()))
-
+        grid = self._create_rectilinear_grid(field_names, field_data, xlo, xhi, ylo, yhi, zlo, zhi)
+        del field_data
         return grid
 
     def createFlowSlice(self, timestep_data):
-        """Create a flat 2D VTK surface from a sliced flow dataset.
-
-        Each filtered cell is projected onto the slice plane as a VTK_QUAD,
-        producing a true flat surface that spans the full domain cross-section
-        with no artificial thickness in the slice direction.
-        """
+        """Create a flat rectilinear VTK grid from a sliced 3D flow dataset."""
         field_items = timestep_data['field_items']
         data = timestep_data['cell_array']
         n_cells = len(data)
@@ -284,81 +324,37 @@ class FlowConverter(BaseConverter):
         del data
         timestep_data['cell_array'] = None
 
-        # Project each cell onto the slice plane as a quad.
-        # Vertex winding is CCW when viewed from the positive axis direction.
-        verts = np.empty((n_cells, 4, 3), dtype=np.float32)
-        fill = np.full(n_cells, value, dtype=np.float32)
-
-        if axis == 'z':
-            # XY plane at z=value: corners span (xlo..xhi) x (ylo..yhi)
-            verts[:, 0] = np.column_stack([xlo, ylo, fill])
-            verts[:, 1] = np.column_stack([xhi, ylo, fill])
-            verts[:, 2] = np.column_stack([xhi, yhi, fill])
-            verts[:, 3] = np.column_stack([xlo, yhi, fill])
-        elif axis == 'y':
-            # XZ plane at y=value: corners span (xlo..xhi) x (zlo..zhi)
-            verts[:, 0] = np.column_stack([xlo, fill, zlo])
-            verts[:, 1] = np.column_stack([xhi, fill, zlo])
-            verts[:, 2] = np.column_stack([xhi, fill, zhi])
-            verts[:, 3] = np.column_stack([xlo, fill, zhi])
-        else:  # axis == 'x'
-            # YZ plane at x=value: corners span (ylo..yhi) x (zlo..zhi)
-            verts[:, 0] = np.column_stack([fill, ylo, zlo])
-            verts[:, 1] = np.column_stack([fill, yhi, zlo])
-            verts[:, 2] = np.column_stack([fill, yhi, zhi])
-            verts[:, 3] = np.column_stack([fill, ylo, zhi])
-
-        del xlo, xhi, ylo, yhi, zlo, zhi, fill
-        vertices = verts.reshape(n_cells * 4, 3)
-        del verts
-
-        # VTK_QUAD (type 9) connectivity
-        base = np.arange(n_cells, dtype=np.int32) * 4
-        cells_conn = np.empty((n_cells, 5), dtype=np.int32)
-        cells_conn[:, 0] = 4
-        cells_conn[:, 1:] = base[:, np.newaxis] + np.arange(4, dtype=np.int32)
-        del base
-
-        cell_types = np.full(n_cells, 9, dtype=np.uint8)
-        grid = pv.UnstructuredGrid(cells_conn.ravel(), cell_types, vertices)
-        del cells_conn, vertices
-
-        log.debug("Attaching %d field(s) to slice grid.", len(field_names))
-        unmapped_keys = set(self.field_map.keys()) - set(field_names)
-        if unmapped_keys:
-            log.warning("field_map contains key(s) not found in field_names: %s", sorted(unmapped_keys))
-
-        for idx, name in enumerate(field_names):
-            mapped_name = self.field_map.get(name, name)
-            grid.cell_data[mapped_name] = field_data[:, idx]
-
+        grid = self._create_rectilinear_grid(
+            field_names,
+            field_data,
+            xlo,
+            xhi,
+            ylo,
+            yhi,
+            zlo,
+            zhi,
+            collapsed_axis=axis,
+            collapsed_value=value,
+        )
         del field_data
         return grid
 
-    def writeFlowVTK(self, grid : pv.UnstructuredGrid, timestep_data):
-        """
-        Save a flow grid to VTK and track timestep.
-
-        Parameters
-        ----------
-        grid: pv.UnstructuredGrid
-            PyVista grid with flow quantities
-        timestep_data: 
-            Data from a single timestep of a flow dump
-        """
+    def writeFlowVTK(self, grid: pv.RectilinearGrid, timestep_data):
+        """Save a flow grid to VTK and track timestep."""
+        self.flow_output_ext = ".vtr" if isinstance(grid, pv.RectilinearGrid) else ".vtu"
         self.writeVTK(
             data_obj=grid,
             timestep=timestep_data['timestep'],
             solver_name="flow",
             folder="flow_output",
-            ext=".vtu"
+            ext=self.flow_output_ext
         )
           
     def writeFlowPVD(self):
-        self.writePVD("flow", ext=".vtu")
+        self.writePVD("flow", ext=self.flow_output_ext)
 
 def runFlow():
-    """completes the loop for flow data"""
+    """Run FlowConverter standalone against ./config.toml."""
     print(
         "WARNING: Running FlowConverter as a standalone module.\n"
         "Only flow-related settings from config.toml will be applied.\n"

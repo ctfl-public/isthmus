@@ -1,5 +1,5 @@
 import sys
-from pivot.configs import FlowConfig, SurfaceConfig, SolidConfig, PostprocessConfig, FilterConfig
+from pivot.configs import FlowConfig, SurfaceConfig, SolidConfig, PostprocessConfig, FilterConfig, VisualizationConfig
 import logging
 log = logging.getLogger(__name__)
 
@@ -38,17 +38,15 @@ class ConfigManager:
         
         self.postprocess = PostprocessConfig.from_dict(raw.get("postprocess", {}))
         self.filters = FilterConfig.from_dict(raw.get("filters", {}))
+        self.visualization = VisualizationConfig.from_dict(raw.get("visualization", {}))
         self.output = raw.get("output", {})
         
         self._log_construction()
-        
+        self._validate()
+
     @property
     def sync_enabled(self) -> bool:
         return self.postprocess.sync_enabled
-    
-    @property
-    def vis_enabled(self) -> bool:
-        return self.postprocess.vis_enabled
     
     def _log_construction(self):
         log.debug("Constructed configuration objects:")
@@ -70,6 +68,7 @@ class ConfigManager:
             
         log.debug("  PostprocessConfig: %s", self.postprocess)
         log.debug("  FilterConfig: %s", self.filters)
+        log.debug("  VisualizationConfig: %s", self.visualization)
         
     def _validate(self):
         log.debug("Starting config validation")
