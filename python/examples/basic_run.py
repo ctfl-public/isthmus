@@ -11,13 +11,11 @@ Demonstrates:
 from pathlib import Path
 import sys
 
-# Make the C++ isthmus package importable when running directly from the
-# source tree (manual cmake build, no `pip install`).
-# The cmake POST_BUILD step copies _isthmus*.so into python/isthmus/ so only
-# the python/ directory needs to be on sys.path.
-# Inserting at index 0 overrides any legacy `isthmus` module that may be
-# present on PYTHONPATH.
-_repo_root = Path(__file__).resolve().parents[2]
+# Only needed if:
+#   1. using a manual CMake build — makes python/isthmus/_isthmus*.so (copied by POST_BUILD) importable.
+#   2. a legacy isthmus is on PYTHONPATH — index 0 ensures the C++ version takes priority.
+# For pip installs, comment out these two lines.
+_repo_root = Path(__file__).resolve().parents[2]  # adjust if this script is moved
 sys.path.insert(0, str(_repo_root / "python"))
 
 from isthmus import (

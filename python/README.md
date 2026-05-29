@@ -47,6 +47,17 @@ Optional but recommended:
 
 ## Installation
 
+Installing this package requires compiling a C++ extension (`_isthmus*.so`) that links against the ISTHMUS core library. The compilation is always driven by CMake, but how you invoke it determines what ends up on your system:
+
+| Method | How CMake is invoked | Where the package lands |
+|---|---|---|
+| `./install.sh` | via `pip` + scikit-build-core (automated) | site-packages |
+| `pip install .` | via `pip` + scikit-build-core | site-packages |
+| `pip install -e .` | via `pip` + scikit-build-core | source tree (editable link from site-packages) |
+| `cmake` directly | manually | build directory; `.so` copied to `python/isthmus/` |
+
+With any `pip`-based method the installed package is immediately importable as `import isthmus` with no extra path setup. The manual CMake path skips pip entirely and instead copies the compiled `.so` back into the source tree, which `basic_run.py` picks up via a `sys.path` insertion at the top of the script.
+
 ### Which path should I use?
 
 | Path | Best for |
@@ -116,9 +127,18 @@ CMAKE_ARGS="-DCMAKE_CXX_COMPILER=clang++" pip install .
 ```bash
 python3 -c "import isthmus; print(isthmus.__version__)"
 # 0.1.0
-
-python3 python/examples/basic_run.py
 ```
+
+> **Note:** `python/examples/basic_run.py` targets the manual CMake workflow
+> and adds the source tree to `sys.path` at startup (see Development Option 2).
+> After a `pip install`, `import isthmus` resolves to site-packages directly —
+> no path setup is needed, and you can skip that script.
+>
+> The exception is if a legacy `isthmus` package (e.g. the pure-Python
+> implementation) is already on `PYTHONPATH`; in that case it will shadow the
+> pip-installed C++ package and you will need to either remove it from
+> `PYTHONPATH` or prepend the correct path explicitly (see
+> [Coexisting with the legacy isthmus module](#coexisting-with-the-legacy-isthmus-module)).
 
 ---
 
