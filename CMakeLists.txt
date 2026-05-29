@@ -1,5 +1,5 @@
 # C++ build entry point for the native ISTHMUS implementation.
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.14...3.26)
 
 project(isthmus_cpp VERSION 0.1.0 LANGUAGES CXX)
 

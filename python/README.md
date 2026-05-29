@@ -34,7 +34,7 @@ If you are browsing from the repository root, the native C++ project is document
 | Requirement | Minimum version |
 |---|---|
 | Python | 3.8 |
-| CMake | 3.22 |
+| CMake | 3.14 |
 | C++ compiler | GCC 11, Clang 14, or MSVC 2022 (C++20 support required) |
 | git | any recent version (used to fetch pybind11 if not pre-installed) |
 
