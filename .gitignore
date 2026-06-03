@@ -5,13 +5,19 @@ __pycache__/
 */*.c
 testing/test_results
 V_and_V/fluxMapping/results
-build
+build*
+cpp/examples/*/build/
 env
 .venv
 docs
 .vscode
 
-tests/**
-!tests/test_*.py
-!tests/gpu_test_wrapper.py
-!tests/pytest.ini
+output*
+cpp_feature_notes.md
+
+examples/ablation_single_phase/*
+!examples/ablation_single_phase/CMakeLists.txt
+!examples/ablation_single_phase/main.cpp
+!examples/ablation_single_phase/Makefile
+!examples/ablation_single_phase/README.md
+!examples/ablation_single_phase/sample1.tif

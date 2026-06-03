@@ -1,0 +1,184 @@
+> Note:
+> This file preserves the original Python-first ISTHMUS guide.
+> The active native C++ guide now lives in the repository root [`README.md`](../README.md).
+
+<p align="center">
+  <img src="../imgs/logo.png" width="35%"></img>
+</p>
+
+-----
+# ISTHMUS: **I**nterfacing **S**urface **T**riangles for **H**eterogenous **MU**ltiphysics **S**imulations
+ISTHMUS, originally developed at the [Computational Thermophysics and Fluids Laboratory](https://ctfl.engr.uky.edu/) (CFTL) of University of Kentucky, provides a bridge between voxelized geometries and their surface representations. While voxels and pixels are commonly used to approximate solid structures in imaging and simulations, voxelized surfaces fail to capture curved interfaces, creating challenges when modeling fluid flow around them. Isthmus introduces **Marching Windows**, a method to generate accurate surface definitions for voxelized structures and consistently transfer fluxes between the surface mesh and voxels.
+
+ISTHMUS is built for multiphysics simulations involving voxelized solids immersed in fluids, making it especially useful for problems such as fluid-structure interaction and thermochemical material response.
+
+For examples of the capabilities of ISTHMUS, see the tutorials located in the [`examples/`](examples/) directory.
+The technical details of the algorithm implemented in ISTHMUS are presented in [this](https://arxiv.org/abs/2603.07396) ArXiv document.
+
+## License
+
+This software is licensed under the MIT License (see [`../LICENSE`](../LICENSE) file).
+Please also see [`../third-party-licenses/`](../third-party-licenses/) for licensing information on bundled dependencies.
+
+## Table of Contents
+- [System Requirements](#system-requirements)
+- [Installation](#installation)
+    - [Step 1: build environment](#step-1-build-environment)
+        - [Install conda](#install-conda)
+        - [Create the Conda environment](#create-the-conda-environment)
+        - [Activate environment](#activate-environment)
+    - [Step 2: build marching cubes package](#step-2-build-marching-cubes-package)
+    - [Step 3: Add ISTHMUS to `PYTHONPATH`](#step-3-add-isthmus-to-pythonpath)
+    - [Step 4: using GPU acceleration with Numba (optional)](#step-4-using-gpu-acceleration-with-numba-optional)
+        - [Set up CUDA Python](#set-up-cuda-python)
+        - [Test Numba installation](#test-numba-installation)
+- [ISTHMUS test](#isthmus-test)
+- [Citing ISTHMUS](#citing-isthmus)
+
+## More
+* Feature requests and bugs can be raised on the [Github issue tracker](https://github.com/ctfl-public/isthmus/issues)
+* [Marching windows theory](../doc/theory.md)
+* [Technical paper](https://arxiv.org/abs/2603.07396) of the ISTHMUS algorithm
+* [Introductory tutorial](examples/ablation/ablationExample.md)
+* [Verification cases](../V_and_V/fluxMapping)
+
+## System Requirements
+
+- Memory needs scale with voxel grid size.
+- Optional GPU (Numba CUDA, does not work on MacOS):
+    - NVIDIA GPU + driver compatible with the selected CUDA runtime
+    - Numba/llvmlite pair (e.g., Numba ~0.55.1 with llvmlite ~0.38.0)
+
+## Installation
+
+### Step 1: build environment
+To work with ISTHMUS, using `conda` (`miniconda` is fine too) along with the virtual environments shipped in the `envs` folder of this repository is highly recommended to avoid package dependency headaches.
+If insisting of not using conda, you need to install the `numba` package and its dependencies manually and solve any conflicts.
+
+#### Install conda
+To test whether it is installed, run `conda --version` from terminal to check the current version. If not, conda can be installed by following the instructions
+[here](https://docs.anaconda.com/anaconda/install/index.html).
+
+> **Note:** Using HPC, load conda module using your administrator guidelines, for example, on University of Kentucky's Lipscomb Compute Cluster (LCC) use:
+> ```bash
+> module load ccs/anaconda/3
+> ```
+
+#### Create the Conda environment:
+To install the default virtual environment for ISTHMUS, run:
+```bash
+conda env create -n <your_env_name> -f envs/environment.yml
+# or in custom location using:
+conda env create -p </path/to/your_env_name> -f envs/environment.yml
+```
+> **Note:** Several Conda environment YAML files are located in the `envs` folder. Use `environment.yml` for complete environment to build ISTHMUS and utilize GPU acceleration using `Numba` and `CUDA`. Other environment files are listed in below table.
+>
+> | Environment File | Description |
+> |------------------|-------------|
+> | `environment.yml` | Complete environment that contains cudatoolkit, numba, cython, and marching cubes dependencies. |
+> | `environment_LCC.yml` | Build for LCC, without driver and cudatoolkit. Use `module load ccs/cuda/12.2.0_535.54.03` instead. |
+> | `environment_wout_gpu.yml` | Environment with only cython and marching cubes dependencies. Does not run with GPU acceleration. |
+
+#### Activate environment:
+Once the environment is created, you can activate it for your current shell session by running:
+```bash
+conda activate <your_env_name>
+# or
+conda activate </path/to/your_env_name>
+```
+
+### Step 2: build marching cubes package
+The ISTHMUS package includes an open source build of marching cubes which must be compiled before moving forward.
+It needs these modules: `trimesh`, `lazy_loader`, `numpy`, `cython`, and `scipy`.
+They should be loaded within any conda environment defined in the above table.
+To compile, run the following from `src` directory.
+```bash
+python -W ignore setup.py build_ext --inplace
+```
+
+### Step 3: Add ISTHMUS to `PYTHONPATH`
+At the end of your `.bashrc`, add the path to `isthmus/legacy/src/` to your `PYTHONPATH` environment variable.
+```bash
+export PYTHONPATH="/path/to/isthmus/legacy/src:$PYTHONPATH"
+```
+
+### Step 4: using GPU acceleration with Numba (optional)
+Numba is a python compiler of python code for excution on CUDA-capable GPUs.
+#### Set up CUDA Python
+* Starting from scratch, CUDA python enviroment can be installed by following the instructions
+[here](https://developer.nvidia.com/how-to-cuda-python),
+
+Or
+
+* Simply by loading the complete environment `environment.yml` contains cudatoolkit, numba, cython, and marching cubes dependencies.
+
+Or
+
+* If running on LCC use `environment_LCC.yml` and load the cuda module using,
+    ```bash
+    module load ccs/cuda/12.2.0_535.54.03
+    ```
+
+    >  **Note:** Using HPC, you might get out of storage quota. It is recommended to clean old tarballs and caches using `conda clean -a`. If still not working, consider relocating the conda pkgs directory from your $HOME to your #SCRATCH folder (for higher quota), before creating the environment.
+    > ```bash
+    > conda config --add pkgs_dirs /your/custom/path
+    > ```
+
+#### Test Numba installation
+Validate with `check_numba_cuda.sh` (lists GPUs and runs a tiny GPU kernel)
+```bash
+chmod +x check_numba_cuda.sh
+./check_numba_cuda.sh
+```
+You should recieve a message contains `All checks passed ✅` at the end.
+
+
+## ISTHMUS test
+To confirm everything is working as expected, change directory to the `tests/` folder and type
+```bash
+pytest -v
+```
+You should recieve a message indicating that all tests have passed and no errors. If did not install CUDA Python environment, you will see the gpu tests skipped, which is fine.
+
+---------
+
+## Citing ISTHMUS
+
+Please cite the following articles when mentioning ISTHMUS in your own papers.
+
+* Huff et al. [A Consistent Interface Reconstruction and Coupling Method for Multiphysics Simulations.](https://arxiv.org/abs/2603.07396) *ArXiv* 2026.
+* Yassin et al. ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations. *SoftwareX* 2026 (under review).
+<!-- * Yassin et al. [ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations.](SOFTWAREX LINK) *SoftwareX* 2026. -->
+
+**Bibtex**
+```bibtex
+@article{huff2026consistent,
+  title   = {A Consistent Interface Reconstruction and Coupling Method for Multiphysics Simulations},
+  author  = {Huff, Ethan and Poovathingal, Savio J.},
+  journal = {arXiv preprint},
+  year    = {2026},
+  doi     = {10.48550/arXiv.2603.07396},
+  archivePrefix = {arXiv},
+  primaryClass  = {physics.flu-dyn}
+}
+@article{yassin2026isthmus_REVIEW,
+  title   = {ISTHMUS: Interfacing Surface Triangles and voxels for Heterogeneous MUltiphysics Simulations},
+  author  = {Yassin, Ahmed H. and Huff, Ethan H. and Mohan Ramu, Vijay B. and Tacchi, Bruno and Am\`erico, Carlos E. and Stoffel, Tyler D. and Poovathingal, Savio J.},
+  journal = {SoftwareX},
+  volume  = {},
+  number  = {},
+  doi     = {},
+  year    = {2026},
+  note    = {{, under review}}
+  }
+```
+
+<!-- Source Files (./src)
+--------------------
+This is where the main body of the marching cubes is performed,
+and where the pre-compilation of the cython parts are done
+
+Testing Files (./testing)
+-------------------------
+This is where the testing script is to verify things like
+geometry validity, quality, etc. -->
