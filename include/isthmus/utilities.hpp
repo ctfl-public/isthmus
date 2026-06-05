@@ -23,8 +23,13 @@ struct VoxelSliceResult {
 /*
  * Load all active voxels from a narrow 8-bit grayscale TIFF stack.
  *
- * Each `1` voxel in the image stack is interpreted as an occupied lattice cell
+ * Each voxel with value of 1 in the image stack is interpreted as an occupied lattice cell
  * and then scaled by `voxel_size` to produce the marching input points.
+ * 
+ * It fills centroids in (Z, Y, X) order: 
+ *  centroid[0] = tiff_page × voxel_size, 
+ *  centroid[1] = tiff_row × voxel_size,
+ *  centroid[2] = tiff_column × voxel_size
  */
 VoxelSet load_active_voxels_from_tiff(
     const std::filesystem::path& tiff_path,
