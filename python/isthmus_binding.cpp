@@ -41,11 +41,14 @@ PYBIND11_MODULE(_isthmus, m) {
             "Compute surface-voxel ownership fractions for flux mapping (default: False).")
         .def_readwrite("write_diagnostics", &RunOptions::write_diagnostics,
             "Reserved for future debug output (default: False).")
+        .def_readwrite("verbose", &RunOptions::verbose,
+            "Print progress messages to stdout during the run (default: False).")
         .def("__repr__", [](const RunOptions& r) {
             std::ostringstream ss;
             ss << "RunOptions(build_surface=" << (r.build_surface ? "True" : "False")
                << ", build_flux_association=" << (r.build_flux_association ? "True" : "False")
-               << ", write_diagnostics=" << (r.write_diagnostics ? "True" : "False") << ")";
+               << ", write_diagnostics=" << (r.write_diagnostics ? "True" : "False")
+               << ", verbose=" << (r.verbose ? "True" : "False") << ")";
             return ss.str();
         });
 

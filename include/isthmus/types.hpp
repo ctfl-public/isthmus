@@ -20,14 +20,16 @@ enum class Dimension : std::size_t {
  * Requests optional algorithm stages in addition to the corner-fill work that
  * is already implemented.
  *
- * `build_surface`: run the surface extraction 
- * `build_flux_association`: compute surface-voxel ownership fractions for flux mapping. 
+ * `build_surface`: run the surface extraction
+ * `build_flux_association`: compute surface-voxel ownership fractions for flux mapping.
  * `write_diagnostics`: reserved for future structured debug output.
+ * `verbose`: print progress messages to stdout at each major stage.
  */
 struct RunOptions {
     bool build_surface = false;
     bool build_flux_association = false;
     bool write_diagnostics = false;
+    bool verbose = false;
 };
 
 /*

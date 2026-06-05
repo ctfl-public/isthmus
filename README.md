@@ -52,15 +52,15 @@ The steps below cover the native C++ build. For the Python wrapper, including qu
 
 Generate the build system by running:
 ```bash
-cmake -S . -B build-wsl
+cmake -S . -B build
 ```
 
-This creates a build tree in `build-wsl/` and prepares the reusable `isthmus_cpp` library target together with its package metadata.
+This creates a build tree in `build/` and prepares the reusable `isthmus_cpp` library target together with its package metadata.
 
 ### Step 2: build ISTHMUS
 Compile the library and its native test executable by running:
 ```bash
-cmake --build build-wsl -j
+cmake --build build -j
 ```
 
 This build produces:
@@ -72,7 +72,7 @@ This build produces:
 ### Step 3: run the native tests
 Run the compiled C++ test suite using:
 ```bash
-ctest --test-dir build-wsl --output-on-failure
+ctest --test-dir build --output-on-failure
 ```
 
 This executes the lightweight native regression suite and prints detailed output for any failing test.
@@ -89,7 +89,7 @@ Each example can be built in one of two ways.
 
 Build with CMake by pointing the example at the root build tree:
 ```bash
-cmake -S examples/ablation_single_phase -B examples/ablation_single_phase/build -Disthmus_cpp_DIR="$PWD/build-wsl"
+cmake -S examples/ablation_single_phase -B examples/ablation_single_phase/build -Disthmus_cpp_DIR="$PWD/build"
 cmake --build examples/ablation_single_phase/build -j
 ```
 
@@ -98,13 +98,13 @@ Or build with the local GNU Make entrypoint:
 make -C examples/ablation_single_phase
 ```
 
-The local example `Makefile`s link against `build-wsl/libisthmus_cpp.a` by default.
+The local example `Makefile`s link against `build/libisthmus_cpp.a` by default.
 Override `ISTHMUS_BUILD_DIR=/path/to/build` if your native library archive lives somewhere else.
 
 ## ISTHMUS test
 To confirm everything is working as expected, configure and build the repository root, then run
 ```bash
-ctest --test-dir build-wsl --output-on-failure
+ctest --test-dir build --output-on-failure
 ```
 You should receive a message indicating that all native tests have passed and no errors were found.
 
