@@ -25,10 +25,26 @@ namespace isthmus::mesh_cleanup {
 namespace {
 
 /*
- * Small union-find helper used by the duplicate-vertex merge passes.
+ * Simple Union-Find helper used by the duplicate-vertex merge passes.
  *
- * The implementation always keeps the smallest root id as the representative
- * so the remapped mesh stays deterministic.
+ * This class groups vertex indices that should be treated as the same point.
+ * Call `unite(a, b)` when two indices refer to the same vertex, and call
+ * `find(x)` to get the group's leader (the chosen representative index).
+ *
+ * The implementation always keeps the smallest index in a group as the
+ * leader. That makes the cleaned mesh deterministic: the same input yields
+ * the same vertex chosen to survive each merge.
+ *
+ * Example:
+ *  - Start: parent = [0,1,2,3]
+ *  - `unite(2, 0)` -> group {0,2} with leader 0
+ *  - `unite(3, 1)` -> group {1,3} with leader 1
+ *  - `unite(2, 3)` -> groups merge, leader becomes 0 (smallest index)
+ *
+ * Notes:
+ *  - `find` shortens links on the way back so future lookups are faster.
+ *  - Callers must pass valid indices; there are no bounds checks here.
+ *  - The class is not thread-safe for concurrent `find`/`unite` calls.
  */
 class UnionFind {
 public:
