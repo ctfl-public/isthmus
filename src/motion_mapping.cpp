@@ -746,9 +746,9 @@ MarchingWindowsResult MotionMapper::run(
 
     // initialize the marching-window lattice and
     // classify every voxel as solid, void, or surface with a depth and weight
-    if (options.verbose) std::cout << "Building voxel grid...\n";
+    if (options.verbose) std::cout << "\tBuilding voxel grid...\n";
     auto voxel_grid = build_voxel_grid(domain, voxels);
-    if (options.verbose) std::cout << "Classifying voxels...\n";
+    if (options.verbose) std::cout << "\tClassifying voxels...\n";
     classify_voxels(domain, voxel_grid);
     MarchingWindowsResult result{};
     result.domain = domain;
@@ -757,7 +757,7 @@ MarchingWindowsResult MotionMapper::run(
     result.surface_voxels = collect_surface_voxels(voxel_grid);
 
     // Build the corner fill field with weighted volumes of the nearby voxels to each corner.
-    if (options.verbose) std::cout << "Dividing voxel volumes for surface creation...\n";
+    if (options.verbose) std::cout << "\tBuilding corner grid...\n";
     auto corners = build_corner_grid(domain, voxel_grid, result.corner_dims);
     result.corner_fill_fractions.reserve(corners.size());
     for (const auto& corner : corners) {
@@ -779,7 +779,7 @@ MarchingWindowsResult MotionMapper::run(
             throw NotImplementedError("2D surface extraction is not implemented in ISTHMUS yet");
         }
 
-        if (options.verbose) std::cout << "Executing marching cubes...\n";
+        if (options.verbose) std::cout << "\tExecuting marching cubes...\n";
         result.surface_mesh = marching_cubes::extract_surface_mesh_3d(
             result.domain,
             result.corner_fill_fractions,
@@ -790,6 +790,7 @@ MarchingWindowsResult MotionMapper::run(
          * Clean the raw marching-cubes mesh before any flux mapping or export
          * work sees it so later stages operate on the repaired surface.
          */
+        if (options.verbose) std::cout << "\tCleaning surface mesh...\n";
         result.surface_mesh = mesh_cleanup::clean_surface_mesh_3d(
             result.surface_mesh,
             result.domain.voxel_size);
@@ -802,7 +803,7 @@ MarchingWindowsResult MotionMapper::run(
         if (domain.dimension == Dimension::D2) {
             throw NotImplementedError("2D flux mapping is not implemented in ISTHMUS yet");
         }
-        if (options.verbose) std::cout << "Associating voxels to surface triangles...\n";
+        if (options.verbose) std::cout << "\tAssociating voxels to surface triangles...\n";
         result.flux_association = flux_mapping::build_flux_association_3d(
             result.domain,
             result.surface_mesh,
