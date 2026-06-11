@@ -1,6 +1,8 @@
 #include "isthmus/io.hpp"
 
 #include <fstream>
+#include <iomanip>
+#include <limits>
 #include <stdexcept>
 
 namespace isthmus::io {
@@ -55,6 +57,7 @@ void write_sparta_surface(
     Dimension dimension,
     const std::filesystem::path& output_path) {
     std::ofstream out = open_output_stream(output_path);
+    out << std::setprecision(std::numeric_limits<double>::max_digits10); // use maximum precision for floating-point output
     out << "surf file from isthmus-cpp\n\n";
     if (dimension == Dimension::D3) {
         out << mesh.vertices.size() << " points\n" << mesh.triangles.size() << " triangles\n\nPoints\n\n";
@@ -91,6 +94,7 @@ void write_vtp_surface(
     const SurfaceMesh& mesh,
     const std::filesystem::path& output_path) {
     std::ofstream out = open_output_stream(output_path);
+    out << std::setprecision(std::numeric_limits<double>::max_digits10); // use maximum precision for floating-point output
 
     out << "<?xml version=\"1.0\"?>\n";
     out << "<VTKFile type=\"PolyData\" version=\"0.1\" byte_order=\"LittleEndian\">\n";
