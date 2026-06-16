@@ -386,9 +386,8 @@ std::size_t triangle_vertex_not_in_edge(
 /*
  * Run low-area triangle filtering and connectivity repair.
  *
- * The pass removes degenerate triangles that appear in canceling pairs and
- * repairs the remaining “degenerate + full triangle” quad case by replacing a
- * single full triangle with two nondegenerate ones.
+ * The pass repairs the remaining “degenerate + full triangle” quad case 
+ * by replacing them with two nondegenerate ones.
  */
 SurfaceMesh repair_degenerate_triangles(
     const SurfaceMesh& mesh,
@@ -429,37 +428,18 @@ SurfaceMesh repair_degenerate_triangles(
     }
 
     /*
-     * Degenerate triangles that share the same longest edge cancel each other
-     * out and can be removed in pairs without any repair work.
-     */
-    std::map<std::array<std::size_t, 2>, std::vector<std::size_t>> edge_to_degenerate_ids;
-    for (std::size_t i = 0; i < degenerate_triangles.size(); ++i) {
-        edge_to_degenerate_ids[degenerate_triangles[i].longest_edge].push_back(i);
-    }
-
-    std::vector<bool> keep_degenerate(degenerate_triangles.size(), true);
-    for (const auto& [edge, indices] : edge_to_degenerate_ids) {
-        (void)edge;
-        for (std::size_t pair_start = 0; pair_start + 1 < indices.size(); pair_start += 2) {
-            keep_degenerate[indices[pair_start]] = false;
-            keep_degenerate[indices[pair_start + 1]] = false;
-        }
-    }
-
-    /*
      * Repair the surviving single degenerates by replacing the associated full
      * triangle with two new triangles that span the same quadrilateral region.
      */
+    bool repaired = false;
     for (std::size_t i = 0; i < degenerate_triangles.size(); ++i) {
-        if (!keep_degenerate[i]) {
-            continue;
-        }
 
         const auto& degenerate = degenerate_triangles[i];
         const auto& edge = degenerate.longest_edge;
         const auto replacement_vertex_from_degenerate =
             triangle_vertex_not_in_edge(degenerate.triangle, edge);
 
+        repaired = false;
         for (std::size_t full_id = 0; full_id < full_triangles.size(); ++full_id) {
             auto full_triangle = full_triangles[full_id];
             if (!triangle_contains_edge(full_triangle, edge)) {
@@ -490,23 +470,21 @@ SurfaceMesh repair_degenerate_triangles(
 
             full_triangles[full_id] = full_triangle;
             full_triangles.push_back(second_triangle);
+            repaired = true;
             break;
+        }
+
+        // if reached this point, means the degenerate triangle does not 
+        // share its longest edge with any full triangle and cannot be repaired, 
+        // so we keep it as is to keep triangle connectivity.
+        if (!repaired) {
+            full_triangles.push_back(degenerate.triangle);
         }
     }
 
-    /*
-     * Re-run a final repeated-vertex and low-area filter after the repair
-     * stage so the returned mesh is safe for later flux mapping.
-     */
-    for (const auto& tri : full_triangles) {
-        if (tri[0] == tri[1] || tri[1] == tri[2] || tri[0] == tri[2]) {
-            continue;
-        }
-        if (triangle_area(mesh, tri) < area_epsilon) {
-            continue;
-        }
-        out.triangles.push_back(tri);
-    }
+    // move the repaired full triangles into the output mesh.
+    // using std::move to avoid unnecessary copying.
+    out.triangles = std::move(full_triangles);
 
     return compact_used_vertices(out);
 }
