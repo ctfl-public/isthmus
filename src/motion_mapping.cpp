@@ -737,28 +737,28 @@ std::vector<SurfaceVoxelInfo> MotionMapper::collect_surface_voxels(const std::ve
  * backends and keeps unsupported 2D stages explicit.
  */
 MarchingWindowsResult MotionMapper::run(
-    const DomainConfig& domain,
-    const VoxelSet& voxels,
-    const RunOptions& options) const {
+    const DomainConfig& domain_config,
+    const VoxelSet& voxel_set,
+    const RunOptions& run_options) const {
 
-    if (options.verbose) std::cout << "Executing marching windows...\n";
-    validate_inputs(domain, voxels);
+    if (run_options.verbose) std::cout << "Executing marching windows...\n";
+    validate_inputs(domain_config, voxel_set);
 
     // initialize the marching-window lattice and
     // classify every voxel as solid, void, or surface with a depth and weight
-    if (options.verbose) std::cout << "\tBuilding voxel grid...\n";
-    auto voxel_grid = build_voxel_grid(domain, voxels);
-    if (options.verbose) std::cout << "\tClassifying voxels...\n";
-    classify_voxels(domain, voxel_grid);
+    if (run_options.verbose) std::cout << "\tBuilding voxel grid...\n";
+    auto voxel_grid = build_voxel_grid(domain_config, voxel_set);
+    if (run_options.verbose) std::cout << "\tClassifying voxels...\n";
+    classify_voxels(domain_config, voxel_grid);
     MarchingWindowsResult result{};
-    result.domain = domain;
+    result.domain = domain_config;
 
     // store surface voxels separately for later use in flux mapping.
     result.surface_voxels = collect_surface_voxels(voxel_grid);
 
     // Build the corner fill field with weighted volumes of the nearby voxels to each corner.
-    if (options.verbose) std::cout << "\tBuilding corner grid...\n";
-    auto corners = build_corner_grid(domain, voxel_grid, result.corner_dims);
+    if (run_options.verbose) std::cout << "\tBuilding corner grid...\n";
+    auto corners = build_corner_grid(domain_config, voxel_grid, result.corner_dims);
     result.corner_fill_fractions.reserve(corners.size());
     for (const auto& corner : corners) {
         result.corner_fill_fractions.push_back(corner.volume);
@@ -766,31 +766,31 @@ MarchingWindowsResult MotionMapper::run(
 
     /*
      * Flux mapping depends on having an extracted surface mesh, so requesting
-        * ownership implies that the 3D surface stage must also run.
+     * ownership implies that the 3D surface stage must also run.
      */
-    const bool need_surface_mesh = options.build_surface || options.build_flux_association;
+    const bool need_surface_mesh = run_options.build_surface || run_options.build_flux_association;
     if (need_surface_mesh) {
         /*
          * The implemented surface stage is currently 3D reconstruction from
          * the already-populated corner field. 2D marching-squares support is
          * still deferred, so keep that contract explicit for callers.
          */
-        if (domain.dimension == Dimension::D2) {
+        if (domain_config.dimension == Dimension::D2) {
             throw NotImplementedError("2D surface extraction is not implemented in ISTHMUS yet");
         }
 
-        if (options.verbose) std::cout << "\tExecuting marching cubes...\n";
+        if (run_options.verbose) std::cout << "\tExecuting marching cubes...\n";
         result.surface_mesh = marching_cubes::extract_surface_mesh_3d(
             result.domain,
             result.corner_fill_fractions,
             result.corner_dims,
-            domain.iso_value);
+            domain_config.iso_value);
 
         /*
          * Clean the raw marching-cubes mesh before any flux mapping or export
          * work sees it so later stages operate on the repaired surface.
          */
-        if (options.verbose) std::cout << "\tCleaning surface mesh...\n";
+        if (run_options.verbose) std::cout << "\tCleaning surface mesh...\n";
         const auto surface_cell_lengths = cell_lengths(result.domain);
         const double min_cell_length = std::min({
             surface_cell_lengths[0],
@@ -800,17 +800,17 @@ MarchingWindowsResult MotionMapper::run(
         result.surface_mesh = mesh_cleanup::clean_surface_mesh_3d(
             result.surface_mesh,
             min_cell_length,
-            options);
+            run_options);
     }
-    if (options.build_flux_association) {
+    if (run_options.build_flux_association) {
         /*
          * Keep the contract explicit for 2D callers while allowing the
          * 3D ownership path to populate triangle-to-voxel fractions.
          */
-        if (domain.dimension == Dimension::D2) {
+        if (domain_config.dimension == Dimension::D2) {
             throw NotImplementedError("2D flux mapping is not implemented in ISTHMUS yet");
         }
-        if (options.verbose) std::cout << "\tAssociating voxels to surface triangles...\n";
+        if (run_options.verbose) std::cout << "\tAssociating voxels to surface triangles...\n";
         result.flux_association = flux_mapping::build_flux_association_3d(
             result.domain,
             result.surface_mesh,

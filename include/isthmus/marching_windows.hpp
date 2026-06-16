@@ -17,9 +17,9 @@ class MarchingWindows {
 public:
     // Execute one marching-windows pass and return all populated result data.
     MarchingWindowsResult run(
-        const DomainConfig& domain,
-        const VoxelSet& voxels,
-        const RunOptions& options = {}) const;
+        const DomainConfig& domain_config,
+        const VoxelSet& voxel_set,
+        const RunOptions& run_options = {}) const;
 
 private:
     MotionMapper motion_mapper_;
