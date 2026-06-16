@@ -493,7 +493,7 @@ SurfaceMesh repair_degenerate_triangles(
 
 SurfaceMesh clean_surface_mesh_3d(
     const SurfaceMesh& raw_mesh,
-    double voxel_size) {
+    double min_cell_length) {
     /*
      * The cleanup stage is a no-op for empty meshes because there is no
      * topology to repair or vertices to merge.
@@ -503,10 +503,11 @@ SurfaceMesh clean_surface_mesh_3d(
     }
 
     /*
-     * Use tolerances that scale with voxel size.
+     * Use a vertex tolerance that scales with the marching-cubes cell size,
+     * because near-duplicate checks operate on the extracted surface mesh.
      */
-    const double vertex_epsilon = 1e-7 * voxel_size;
-    const double area_epsilon = 1e-8 * voxel_size;
+    const double vertex_epsilon = 1e-7 * min_cell_length;
+    const double area_epsilon = 0.5 * std::pow(vertex_epsilon, 2);
 
     /*
      * Apply the bundled marching-cubes style degenerate-face removal first so

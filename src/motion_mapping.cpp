@@ -791,9 +791,15 @@ MarchingWindowsResult MotionMapper::run(
          * work sees it so later stages operate on the repaired surface.
          */
         if (options.verbose) std::cout << "\tCleaning surface mesh...\n";
+        const auto surface_cell_lengths = cell_lengths(result.domain);
+        const double min_cell_length = std::min({
+            surface_cell_lengths[0],
+            surface_cell_lengths[1],
+            surface_cell_lengths[2]
+        });
         result.surface_mesh = mesh_cleanup::clean_surface_mesh_3d(
             result.surface_mesh,
-            result.domain.voxel_size);
+            min_cell_length);
     }
     if (options.build_flux_association) {
         /*

@@ -15,7 +15,7 @@ namespace isthmus::mesh_cleanup {
  * Clean a raw 3D marching-cubes mesh using the established sequence:
  *
  * 1. Merge duplicate vertices implied by degenerate faces.
- * 2. Merge near-duplicate vertices within a voxel-size-scaled tolerance.
+ * 2. Merge near-duplicate vertices within a marching-cell-scaled tolerance.
  * 3. Drop repeated-vertex triangles.
  * 4. Remove or repair low-area degenerate triangles to preserve connectivity.
  *
@@ -24,6 +24,6 @@ namespace isthmus::mesh_cleanup {
  */
 SurfaceMesh clean_surface_mesh_3d(
     const SurfaceMesh& raw_mesh,
-    double voxel_size);
+    double min_cell_length);
 
 }  // namespace isthmus::mesh_cleanup
