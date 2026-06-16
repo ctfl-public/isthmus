@@ -799,7 +799,8 @@ MarchingWindowsResult MotionMapper::run(
         });
         result.surface_mesh = mesh_cleanup::clean_surface_mesh_3d(
             result.surface_mesh,
-            min_cell_length);
+            min_cell_length,
+            options);
     }
     if (options.build_flux_association) {
         /*

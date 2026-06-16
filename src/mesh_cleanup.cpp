@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "isthmus/geometry.hpp"
 
@@ -493,7 +494,8 @@ SurfaceMesh repair_degenerate_triangles(
 
 SurfaceMesh clean_surface_mesh_3d(
     const SurfaceMesh& raw_mesh,
-    double min_cell_length) {
+    double min_cell_length,
+    const RunOptions& options) {
     /*
      * The cleanup stage is a no-op for empty meshes because there is no
      * topology to repair or vertices to merge.
@@ -514,18 +516,21 @@ SurfaceMesh clean_surface_mesh_3d(
      * obviously duplicated vertices collapse before the ISTHMUS-specific
      * near-duplicate and connectivity-repair logic runs.
      */
+    if (options.verbose) std::cout << "\t\tremoving exact vertices...\n";
     auto mesh = remove_exact_duplicate_vertices(raw_mesh);
 
     /*
      * Merge any remaining near-duplicate vertices in physical space after the
      * exact-duplicate cleanup stage.
      */
+    if (options.verbose) std::cout << "\t\tremoving near-duplicate vertices...\n";
     mesh = remove_near_duplicate_vertices(mesh, vertex_epsilon);
 
     /*
      * Finally remove and repair low-area triangles so the flux mapper sees a
      * production-safe cleaned topology.
      */
+    if (options.verbose) std::cout << "\t\trepairing degenerate triangles...\n";
     mesh = repair_degenerate_triangles(mesh, area_epsilon);
     return mesh;
 }

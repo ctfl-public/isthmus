@@ -24,6 +24,7 @@ namespace isthmus::mesh_cleanup {
  */
 SurfaceMesh clean_surface_mesh_3d(
     const SurfaceMesh& raw_mesh,
-    double min_cell_length);
+    double min_cell_length,
+    const RunOptions& options);
 
 }  // namespace isthmus::mesh_cleanup

@@ -157,7 +157,7 @@ TEST_CASE(test_mesh_cleanup_merges_near_duplicate_vertices_and_drops_repeated_fa
         {{1, 2, 3}}
     };
 
-    const auto cleaned = mesh_cleanup::clean_surface_mesh_3d(mesh, 1.0);
+    const auto cleaned = mesh_cleanup::clean_surface_mesh_3d(mesh, 1.0, {});
 
     CHECK(cleaned.vertices.size() == 3);
     CHECK(cleaned.triangles.size() == 1);
@@ -194,7 +194,7 @@ TEST_CASE(test_mesh_cleanup_removes_paired_degenerate_triangles) {
         {{0, 3, 2}}
     };
 
-    const auto cleaned = mesh_cleanup::clean_surface_mesh_3d(mesh, 1.0);
+    const auto cleaned = mesh_cleanup::clean_surface_mesh_3d(mesh, 1.0, {});
     CHECK(cleaned.triangles.empty());
 }
 
@@ -230,7 +230,7 @@ TEST_CASE(test_mesh_cleanup_repairs_degenerate_triangle_connectivity) {
         {{0, 2, 3}}
     };
 
-    const auto cleaned = mesh_cleanup::clean_surface_mesh_3d(mesh, 1.0);
+    const auto cleaned = mesh_cleanup::clean_surface_mesh_3d(mesh, 1.0, {});
 
     CHECK(cleaned.triangles.size() == 2);
 
