@@ -104,6 +104,12 @@ struct QuantizedKeyHash {
     }
 };
 
+struct RepairStats {
+    std::size_t degenerate_found = 0;
+    std::size_t quad_flipped = 0;
+    std::size_t kept_for_topology = 0;
+};
+
 /*
  * Keep together one low-area triangle and the longest-edge signature used by
  * the connectivity-repair pass.
@@ -392,7 +398,8 @@ std::size_t triangle_vertex_not_in_edge(
  */
 SurfaceMesh repair_degenerate_triangles(
     const SurfaceMesh& mesh,
-    double area_epsilon) {
+    double area_epsilon,
+    RepairStats& stats) {
     SurfaceMesh out;
     out.vertices = mesh.vertices;
 
@@ -409,6 +416,7 @@ SurfaceMesh repair_degenerate_triangles(
         const auto& tri = mesh.triangles[triangle_order];
         const double area = triangle_area(mesh, tri);
         if (area < area_epsilon) {
+            ++stats.degenerate_found;
             const std::array<geometry::Vec3, 3> vertices{{
                 mesh.vertices[tri[0]],
                 mesh.vertices[tri[1]],
@@ -472,14 +480,16 @@ SurfaceMesh repair_degenerate_triangles(
             full_triangles[full_id] = full_triangle;
             full_triangles.push_back(second_triangle);
             repaired = true;
+            ++stats.quad_flipped;
             break;
         }
 
-        // if reached this point, means the degenerate triangle does not 
-        // share its longest edge with any full triangle and cannot be repaired, 
+        // if reached this point, means the degenerate triangle does not
+        // share its longest edge with any full triangle and cannot be repaired,
         // so we keep it as is to keep triangle connectivity.
         if (!repaired) {
             full_triangles.push_back(degenerate.triangle);
+            ++stats.kept_for_topology;
         }
     }
 
@@ -517,22 +527,44 @@ SurfaceMesh clean_surface_mesh_3d(
      * near-duplicate and connectivity-repair logic runs.
      */
     if (options.verbose) std::cout << "\t\tremoving exact vertices...\n";
-    auto mesh = remove_exact_duplicate_vertices(raw_mesh);
+    {
+        const auto v_before = raw_mesh.vertices.size();
+        const auto t_before = raw_mesh.triangles.size();
+        auto mesh = remove_exact_duplicate_vertices(raw_mesh);
+        if (options.verbose) {
+            std::cout << "\t\t  merged " << v_before << " -> " << mesh.vertices.size()
+                      << " vertices, dropped " << (t_before - mesh.triangles.size()) << " triangles\n";
+        }
 
-    /*
-     * Merge any remaining near-duplicate vertices in physical space after the
-     * exact-duplicate cleanup stage.
-     */
-    if (options.verbose) std::cout << "\t\tremoving near-duplicate vertices...\n";
-    mesh = remove_near_duplicate_vertices(mesh, vertex_epsilon);
+        /*
+         * Merge any remaining near-duplicate vertices in physical space after the
+         * exact-duplicate cleanup stage.
+         */
+        if (options.verbose) std::cout << "\t\tremoving near-duplicate vertices...\n";
+        {
+            const auto v2_before = mesh.vertices.size();
+            const auto t2_before = mesh.triangles.size();
+            mesh = remove_near_duplicate_vertices(mesh, vertex_epsilon);
+            if (options.verbose) {
+                std::cout << "\t\t  merged " << v2_before << " -> " << mesh.vertices.size()
+                          << " vertices, dropped " << (t2_before - mesh.triangles.size()) << " triangles\n";
+            }
+        }
 
-    /*
-     * Finally remove and repair low-area triangles so the flux mapper sees a
-     * production-safe cleaned topology.
-     */
-    if (options.verbose) std::cout << "\t\trepairing degenerate triangles...\n";
-    mesh = repair_degenerate_triangles(mesh, area_epsilon);
-    return mesh;
+        /*
+         * Finally remove and repair low-area triangles so the flux mapper sees a
+         * production-safe cleaned topology.
+         */
+        if (options.verbose) std::cout << "\t\trepairing degenerate triangles...\n";
+        RepairStats repair_stats;
+        mesh = repair_degenerate_triangles(mesh, area_epsilon, repair_stats);
+        if (options.verbose) {
+            std::cout << "\t\t  found " << repair_stats.degenerate_found << " degenerate"
+                      << "; " << repair_stats.quad_flipped << " quad-flipped"
+                      << " and " << repair_stats.kept_for_topology << " kept for topology\n";
+        }
+        return mesh;
+    }
 }
 
 }  // namespace isthmus::mesh_cleanup
