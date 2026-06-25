@@ -43,23 +43,21 @@ int main(int argc, char** argv) {
     /**
      * Use the existing 3D verification setup so the demo produces a tiny
      * known-good surface without needing any external voxel input files.
-     */
-    DomainConfig domain;
-    domain.dimension = Dimension::D3;
-    domain.limits = {{{-2.0e-6, -2.0e-6, -2.0e-6}, {2.0e-6, 2.0e-6, 2.0e-6}}};
-    domain.cell_counts = {{4, 4, 4}};
-    domain.weighting = false;
-
+    */
     /**
      * This is the same voxel size derivation used by the regression tests, so
      * the example surface remains aligned with the native reference case.
      */
     const double marching_grid_length = 4.0e-6;
     const double cube_side_length = std::cbrt(0.75) * (marching_grid_length / 4.0);
-    domain.voxel_size = cube_side_length / 2.0;
 
     RunOptions options;
+    options.dimension = Dimension::D3;
+    options.voxel_size = cube_side_length / 2.0;
+    options.marching_voxel_ratio = (marching_grid_length / 4.0) / options.voxel_size;
+    options.weighting = false;
     options.build_surface = true;
+    options.build_flux_association = false;
 
     /**
      * Write into a user-supplied directory when one is passed on the command
@@ -73,9 +71,9 @@ int main(int argc, char** argv) {
     /**
      * Run the native reconstruction on the synthetic cube and prepare both
      * export file paths before writing the mesh to disk.
-     */
+    */
     MarchingWindows mw;
-    const auto result = mw.run(domain, make_voxel_cube(cube_side_length, 2), options);
+    const auto result = mw.run(make_voxel_cube(cube_side_length, 2), options);
 
     const std::filesystem::path surf_path = output_dir / "surface_cube.surf";
     const std::filesystem::path vtp_path = output_dir / "surface_cube.vtp";
@@ -84,7 +82,7 @@ int main(int argc, char** argv) {
      * Write both formats on every run so users can compare the legacy solver
      * surface file with the ParaView-native visualization file immediately.
      */
-    io::write_sparta_surface(result.surface_mesh, domain.dimension, surf_path);
+    io::write_sparta_surface(result.surface_mesh, result.domain.dimension, surf_path);
     io::write_vtp_surface(result.surface_mesh, vtp_path);
 
     std::cout << "Exported " << result.surface_mesh.vertices.size()

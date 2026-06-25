@@ -123,23 +123,21 @@ TEST_CASE(test_write_vtp_surface_end_to_end_serializes_native_surface_mesh) {
      * The end-to-end export path should write a non-empty VTP file whose point
      * and polygon counts match the reconstructed mesh and whose per-triangle
      * metadata arrays are present in the output.
-     */
+    */
     // Set up a marching-windows run with a compact voxel cube that should produce a small but nontrivial surface mesh.
-    DomainConfig domain;
-    domain.dimension = Dimension::D3;
-    domain.limits = {{{-2.0e-6, -2.0e-6, -2.0e-6}, {2.0e-6, 2.0e-6, 2.0e-6}}};
-    domain.cell_counts = {{4, 4, 4}};
-    domain.weighting = false;
-
     const double marching_grid_length = 4.0e-6;
     const double cube_side_length = std::cbrt(0.75) * (marching_grid_length / 4.0);
-    domain.voxel_size = cube_side_length / 2.0;
 
     RunOptions options;
+    options.dimension = Dimension::D3;
+    options.voxel_size = cube_side_length / 2.0;
+    options.marching_voxel_ratio = (marching_grid_length / 4.0) / options.voxel_size;
+    options.weighting = false;
     options.build_surface = true;
+    options.build_flux_association = false;
 
     MarchingWindows mw;
-    const auto result = mw.run(domain, make_voxel_cube(cube_side_length, 2), options);
+    const auto result = mw.run(make_voxel_cube(cube_side_length, 2), options);
 
     // Create a temporary output file and serialize the reconstructed mesh to VTP.
     const std::filesystem::path output_path = std::filesystem::temp_directory_path() / "isthmus_test_native_surface.vtp";

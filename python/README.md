@@ -261,33 +261,23 @@ regardless of what is on PYTHONPATH.  No virtual environment is required.
 
 A complete working example is available in [python/examples/basic_run.py](examples/basic_run.py).
 
-### Domain configuration
+### Run configuration
 
 ```python
-from isthmus import DomainConfig, Dimension
+from isthmus import RunOptions, Dimension
 
-domain = DomainConfig()
-domain.dimension  = Dimension.D3          # or Dimension.D2
-domain.voxel_size = 3.376e-6              # meters per voxel edge
-domain.limits     = [                     # [[xmin, ymin, zmin], [xmax, ymax, zmax]]
-    [-5 * domain.voxel_size] * 3,
-    [105 * domain.voxel_size] * 3,
-]
-domain.cell_counts = [100, 100, 100]      # marching cells per axis
-domain.weighting   = True                 # depth-based corner weights
-domain.iso_value   = 0.5                  # isosurface threshold
+options = RunOptions()
+options.dimension = Dimension.D3          # or Dimension.D2
+options.voxel_size = 3.376e-6             # meters per voxel edge
+options.marching_voxel_ratio = 1.6        # auto-derive limits and cell_counts
+options.weighting = True                  # depth-based corner weights
+options.iso_value = 0.5                   # isosurface threshold
 ```
 
-**Buffer requirement:** the domain must include at least 5 voxels of padding on
-every side of the voxel cloud, or the library raises
-`InvalidInputError: Insufficient buffer`.
-
-```python
-buf = 5                                        # voxels of margin on each side
-n   = <extent of voxel cloud in cells>
-domain.limits      = [[-buf * voxel_size] * 3, [(n + buf) * voxel_size] * 3]
-domain.cell_counts = [n + 2 * buf] * 3
-```
+`marching_voxel_ratio` is required. ISTHMUS derives `limits` and
+`cell_counts` from the voxel cloud during `run()` and adds enough buffer for
+the selected weighting mode. The concrete resolved values are available in the
+returned `result.domain`.
 
 For 2D domains only the first two elements of `limits`, `cell_counts`, and
 voxel centroids are used; the third is ignored by the library.
@@ -361,11 +351,11 @@ options.build_surface          = True   # reconstruct the isosurface
 options.build_flux_association = True   # compute triangle→voxel ownership
 
 mw     = MarchingWindows()
-result = mw.run(domain, voxels, options)
+result = mw.run(voxels, options)
 ```
 
 `MarchingWindows` is stateless; the same instance can be called repeatedly with
-different domains or voxel sets.
+different options or voxel sets.
 
 ---
 
@@ -413,27 +403,32 @@ triangles = np.array(result.surface_mesh.triangles)  # (M, 3) int
 
 ```
 MarchingWindows()
-    .run(domain, voxels, options=RunOptions()) -> MarchingWindowsResult
+    .run(voxels, options) -> MarchingWindowsResult
 ```
-
-### `DomainConfig`
-
-| Attribute | Type | Default | Description |
-|---|---|---|---|
-| `dimension` | `Dimension` | `D3` | Spatial dimension |
-| `limits` | `[[float×3], [float×3]]` | `[[0,0,0],[1,1,1]]` | Domain bounds |
-| `cell_counts` | `[int×3]` | `[1,1,1]` | Cells per axis |
-| `voxel_size` | `float` | `1.0` | Voxel edge length (m) |
-| `weighting` | `bool` | `True` | Depth weighting |
-| `iso_value` | `float` | `0.5` | Isosurface threshold |
 
 ### `RunOptions`
 
 | Attribute | Type | Default | Description |
 |---|---|---|---|
-| `build_surface` | `bool` | `False` | Run surface extraction |
-| `build_flux_association` | `bool` | `False` | Compute flux ownership |
-| `write_diagnostics` | `bool` | `False` | Reserved for future use |
+| `dimension` | `Dimension` | `D3` | Spatial dimension |
+| `voxel_size` | `float` | `1.0` | Voxel edge length (m) |
+| `marching_voxel_ratio` | `float` | `0.0` | Required marching-cell / voxel-size ratio |
+| `weighting` | `bool` | `True` | Depth weighting |
+| `iso_value` | `float` | `0.5` | Isosurface threshold |
+| `build_surface` | `bool` | `True` | Run surface extraction |
+| `build_flux_association` | `bool` | `True` | Compute flux ownership |
+
+### `DomainConfig` (result metadata)
+
+| Attribute | Type | Default | Description |
+|---|---|---|---|
+| `dimension` | `Dimension` | derived | Spatial dimension used for the run |
+| `limits` | `[[float×3], [float×3]]` | derived | Domain bounds derived during `run()` |
+| `cell_counts` | `[int×3]` | derived | Cells per axis derived during `run()` |
+| `voxel_size` | `float` | derived | Voxel edge length (m) |
+| `marching_voxel_ratio` | `float` | derived | Marching-cell / voxel-size ratio |
+| `weighting` | `bool` | derived | Depth weighting used for the run |
+| `iso_value` | `float` | derived | Isosurface threshold used for the run |
 
 ### `VoxelRecord`
 
@@ -516,8 +511,9 @@ import isthmus   # now resolves to the C++ wrapper
 use Option 2 (manual CMake build) and add the `sys.path.insert` shown above.
 
 **`InvalidInputError: Insufficient buffer`**
-→ The domain limits do not leave enough margin around the voxel cloud.
-Add at least 5 voxels of padding on every side (see [Domain configuration](#domain-configuration)).
+→ The derived domain does not leave enough margin around the voxel cloud.
+Check that `options.marching_voxel_ratio` is positive and at least `1.0`
+(see [Run configuration](#run-configuration)).
 
 **`CMake Error: pybind11 not found`**
 → pybind11 is fetched automatically via git at configure time.  Ensure git is

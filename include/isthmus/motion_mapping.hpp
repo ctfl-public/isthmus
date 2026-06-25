@@ -19,12 +19,12 @@ namespace isthmus {
 class MotionMapper {
 public:
     MarchingWindowsResult run(
-        const DomainConfig& domain_config,
         const VoxelSet& voxel_set,
         const RunOptions& run_options) const;
 
 private:
-    static void validate_inputs(const DomainConfig& domain, const VoxelSet& voxels);
+    static void validate_inputs(const RunOptions& run_options, const VoxelSet& voxels);
+    static void populate_domain_config(DomainConfig& domain, const VoxelSet& voxels);
     static std::vector<VoxelCell> build_voxel_grid(const DomainConfig& domain, const VoxelSet& voxels);
     static void classify_voxels(const DomainConfig& domain, std::vector<VoxelCell>& grid);
     static void assign_exposed_faces(const DomainConfig& domain, std::vector<VoxelCell>& grid);

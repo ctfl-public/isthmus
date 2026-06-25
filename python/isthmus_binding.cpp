@@ -33,21 +33,33 @@ PYBIND11_MODULE(_isthmus, m) {
     // ---- RunOptions --------------------------------------------------------
 
     py::class_<RunOptions>(m, "RunOptions",
-            "Controls which optional algorithm stages run in addition to corner-fill computation.")
+            "Controls physical settings and optional algorithm stages.")
         .def(py::init<>())
+        .def_readwrite("dimension", &RunOptions::dimension,
+            "Grid dimension: Dimension.D2 or Dimension.D3 (default: Dimension.D3).")
+        .def_readwrite("voxel_size", &RunOptions::voxel_size,
+            "Edge length of one voxel in the caller's model (meters).")
+        .def_readwrite("marching_voxel_ratio", &RunOptions::marching_voxel_ratio,
+            "Required marching-cell / voxel-size ratio.")
+        .def_readwrite("weighting", &RunOptions::weighting,
+            "Apply depth-based weighting to the corner fill field (default: True).")
+        .def_readwrite("iso_value", &RunOptions::iso_value,
+            "Isosurface threshold for the marching cubes/squares algorithm (default: 0.5).")
         .def_readwrite("build_surface", &RunOptions::build_surface,
-            "Run the surface extraction stage (default: False).")
+            "Run the surface extraction stage (default: True).")
         .def_readwrite("build_flux_association", &RunOptions::build_flux_association,
-            "Compute surface-voxel ownership fractions for flux mapping (default: False).")
-        .def_readwrite("write_diagnostics", &RunOptions::write_diagnostics,
-            "Reserved for future debug output (default: False).")
+            "Compute surface-voxel ownership fractions for flux mapping (default: True).")
         .def_readwrite("verbose", &RunOptions::verbose,
             "Print progress messages to stdout during the run (default: False).")
         .def("__repr__", [](const RunOptions& r) {
             std::ostringstream ss;
-            ss << "RunOptions(build_surface=" << (r.build_surface ? "True" : "False")
+            ss << "RunOptions(dimension=D" << static_cast<int>(r.dimension)
+               << ", voxel_size=" << r.voxel_size
+               << ", marching_voxel_ratio=" << r.marching_voxel_ratio
+               << ", iso_value=" << r.iso_value
+               << ", weighting=" << (r.weighting ? "True" : "False")
+               << ", build_surface=" << (r.build_surface ? "True" : "False")
                << ", build_flux_association=" << (r.build_flux_association ? "True" : "False")
-               << ", write_diagnostics=" << (r.write_diagnostics ? "True" : "False")
                << ", verbose=" << (r.verbose ? "True" : "False") << ")";
             return ss.str();
         });
@@ -55,16 +67,18 @@ PYBIND11_MODULE(_isthmus, m) {
     // ---- DomainConfig ------------------------------------------------------
 
     py::class_<DomainConfig>(m, "DomainConfig",
-            "Describes the physical marching-windows domain.")
+            "Resolved physical marching-windows domain returned by a run.")
         .def(py::init<>())
         .def_readwrite("dimension", &DomainConfig::dimension,
             "Grid dimension: Dimension.D2 or Dimension.D3.")
         .def_readwrite("limits", &DomainConfig::limits,
-            "[[xmin, ymin, zmin], [xmax, ymax, zmax]] coordinate bounds.")
+            "[[xmin, ymin, zmin], [xmax, ymax, zmax]] coordinate bounds derived during run().")
         .def_readwrite("cell_counts", &DomainConfig::cell_counts,
-            "[nx, ny, nz] number of marching cells along each active axis.")
+            "[nx, ny, nz] marching cells derived during run().")
         .def_readwrite("voxel_size", &DomainConfig::voxel_size,
             "Edge length of one voxel in the caller's model (meters).")
+        .def_readwrite("marching_voxel_ratio", &DomainConfig::marching_voxel_ratio,
+            "Required marching-cell / voxel-size ratio. limits and cell_counts are derived from the voxel set.")
         .def_readwrite("weighting", &DomainConfig::weighting,
             "Apply depth-based weighting to the corner fill field (default: True).")
         .def_readwrite("iso_value", &DomainConfig::iso_value,
@@ -73,6 +87,7 @@ PYBIND11_MODULE(_isthmus, m) {
             std::ostringstream ss;
             ss << "DomainConfig(dimension=D" << static_cast<int>(d.dimension)
                << ", voxel_size=" << d.voxel_size
+               << ", marching_voxel_ratio=" << d.marching_voxel_ratio
                << ", iso_value=" << d.iso_value
                << ", weighting=" << (d.weighting ? "True" : "False") << ")";
             return ss.str();
@@ -152,7 +167,7 @@ PYBIND11_MODULE(_isthmus, m) {
     py::class_<MarchingWindowsResult>(m, "MarchingWindowsResult",
             "Complete in-memory result of a MarchingWindows run.")
         .def_readonly("domain", &MarchingWindowsResult::domain,
-            "Validated DomainConfig used for this run.")
+            "Resolved DomainConfig used for this run.")
         .def_readonly("corner_fill_fractions", &MarchingWindowsResult::corner_fill_fractions,
             "Flat list of corner fill fractions; length equals product of corner_dims.")
         .def_readonly("corner_dims", &MarchingWindowsResult::corner_dims,
@@ -170,15 +185,13 @@ PYBIND11_MODULE(_isthmus, m) {
             "Public entry point for the isthmus marching-windows library.")
         .def(py::init<>())
         .def("run", &MarchingWindows::run,
-            py::arg("domain"),
             py::arg("voxels"),
-            py::arg("options") = RunOptions{},
+            py::arg("options"),
             R"(Execute one marching-windows pass and return all results in memory.
 
 Args:
-    domain  (DomainConfig): Physical domain description.
     voxels  (VoxelSet):     Occupied voxel centroids.
-    options (RunOptions):   Optional algorithm stages (default: all off).
+    options (RunOptions):   Required physical settings and optional algorithm stages.
 
 Returns:
     MarchingWindowsResult

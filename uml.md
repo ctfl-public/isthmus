@@ -14,12 +14,13 @@ classDiagram
 direction LR
 
 class MarchingWindows {
-  +run(domain, voxels, options) MarchingWindowsResult
+  +run(voxels, options) MarchingWindowsResult
   -motion_mapper_ : MotionMapper
 }
 
 class MotionMapper {
-  +run(domain, voxels, options) MarchingWindowsResult
+  +run(voxels, options) MarchingWindowsResult
+  -populate_domain_config(...)
   -validate_inputs(...)
   -build_voxel_grid(...)
   -classify_voxels(...)
@@ -35,9 +36,14 @@ class Dimension {
 }
 
 class RunOptions {
+  +dimension : Dimension
+  +voxel_size : double
+  +marching_voxel_ratio : double
+  +weighting : bool
+  +iso_value : double
   +build_surface : bool
   +build_flux_association : bool
-  +write_diagnostics : bool
+  +verbose : bool
 }
 
 class DomainConfig {
@@ -45,7 +51,9 @@ class DomainConfig {
   +limits : 2 bounds x 3 coordinates
   +cell_counts : 3 axis counts
   +voxel_size : double
+  +marching_voxel_ratio : double
   +weighting : bool
+  +iso_value : double
 }
 
 class VoxelRecord {

@@ -9,12 +9,13 @@ int main() {
      * Configure a simple 2D marching-windows domain that is large enough to
      * hold the synthetic voxelized square built below.
      */
-    DomainConfig domain;
-    domain.dimension = Dimension::D2;
-    domain.limits = {{{-5.0, -5.0, 0.0}, {5.0, 5.0, 0.0}}};
-    domain.cell_counts = {{10, 10, 1}};
-    domain.voxel_size = 2.0 / 3.0;
-    domain.weighting = true;
+    RunOptions options;
+    options.dimension = Dimension::D2;
+    options.voxel_size = 2.0 / 3.0;
+    options.marching_voxel_ratio = 1.5;
+    options.weighting = true;
+    options.build_surface = false;
+    options.build_flux_association = false;
 
     /**
      * Build a small synthetic voxelized square and run the implemented
@@ -26,8 +27,8 @@ int main() {
         for (int i = 0; i < 8; ++i) {
             VoxelRecord record;
             record.centroid = {
-                (-4.0 * domain.voxel_size) + (0.5 + i) * domain.voxel_size,
-                (-4.0 * domain.voxel_size) + (0.5 + j) * domain.voxel_size,
+                (-4.0 * options.voxel_size) + (0.5 + i) * options.voxel_size,
+                (-4.0 * options.voxel_size) + (0.5 + j) * options.voxel_size,
                 0.0
             };
             record.original_id = original_id++;
@@ -40,7 +41,7 @@ int main() {
      * the example ran and produced meaningful reconstruction data.
      */
     MarchingWindows mw;
-    const auto result = mw.run(domain, voxels);
+    const auto result = mw.run(voxels, options);
     std::cout << "Computed " << result.corner_fill_fractions.size()
               << " corner fill fractions and found "
               << result.surface_voxels.size() << " surface voxels.\n";

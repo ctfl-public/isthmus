@@ -297,7 +297,6 @@ int main(int argc, char** argv) {
      */
     constexpr int image_width = 200;    // pixels
     constexpr int image_height = 100;   // pixels
-    constexpr int buffer = 5;   // pixels of zero-value padding to add around the input image to ensure a closed marching domain
     constexpr std::size_t n_ablation_steps = 3;
     constexpr double voxel_size = 3.3757e-6;  // meters per voxel edge
     constexpr double sample_density = 1800.0;  // kg per cubic meter
@@ -318,25 +317,14 @@ int main(int argc, char** argv) {
         : default_surface_mass_flux;
 
     /*
-     * Configure the marching windows domain.
-     */
-    DomainConfig domain;
-    domain.dimension = Dimension::D3;
-    domain.limits = {{{-buffer * voxel_size, -buffer * voxel_size, -buffer * voxel_size},
-                      {(image_height + buffer) * voxel_size,
-                       (image_width + buffer) * voxel_size,
-                       (image_width + buffer) * voxel_size}}};
-    domain.cell_counts = {{static_cast<std::size_t>(image_height),
-                           static_cast<std::size_t>(image_width),
-                           static_cast<std::size_t>(image_width)}};
-    domain.voxel_size = voxel_size;
-    domain.weighting = false;
-    domain.iso_value = 0.5;
-
-    /*
      * Configure the run options.
      */
     RunOptions options;
+    options.dimension = Dimension::D3;
+    options.voxel_size = voxel_size;
+    options.marching_voxel_ratio = 1.05;
+    options.weighting = false;
+    options.iso_value = 0.5;
     options.build_surface = true;
     options.build_flux_association = true;
 
@@ -382,11 +370,11 @@ int main(int argc, char** argv) {
         std::cout << "Step " << step << "/" << n_ablation_steps << '\n';
 
         // Run marching windows on the current voxel state
-        const auto step_result = marching_windows.run(domain, make_voxel_set(voxel_state), options);
+        const auto step_result = marching_windows.run(make_voxel_set(voxel_state), options);
         
         // Compute diagnostics before the ablation update
         const double volume_fraction =
-            compute_volume_fraction(step_result.corner_fill_fractions, domain.cell_counts);
+            compute_volume_fraction(step_result.corner_fill_fractions, step_result.domain.cell_counts);
         const std::size_t empty_flux_count =
             count_empty_flux_elements(step_result.flux_association);
 
@@ -397,7 +385,7 @@ int main(int argc, char** argv) {
             voxel_state);
         io::write_flux_association(
             step_result.flux_association,
-            domain.dimension,
+            step_result.domain.dimension,
             voxel_tri_dir / ("triangle_voxels_" + std::to_string(step) + ".dat"));
         write_volume_fraction(output_dir / "volFrac.dat", volume_fraction);
 
@@ -422,7 +410,7 @@ int main(int argc, char** argv) {
             step_result.surface_mesh,
             step_result.flux_association,
             volume_fraction,
-            domain.limits,
+            step_result.domain.limits,
             sample_density,
             surface_mass_flux);
 

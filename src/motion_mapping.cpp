@@ -214,46 +214,51 @@ void add_2d_faces(VoxelCell& voxel, double voxel_size) {
 }  // namespace
 
 /*
- * Validate that the marching grid is physically meaningful for the supplied
- * voxel set.
- *
- * The grid must have positive extent, positive cell counts, and cells at least
- * as large as the solid voxels. The voxel set must also sit far enough inside
- * the marching domain that the weighting and ghost-voxel logic have room to
- * build the auxiliary lattice around it.
+ * Validate the caller-provided inputs.
  */
-void MotionMapper::validate_inputs(const DomainConfig& domain, const VoxelSet& voxels) {
-    // Get the number of active dimensions for bounds checking and iteration
-    const auto dims = active_dims(domain.dimension);
-    
-    // Check basic validity of the domain parameters and input voxel set
+void MotionMapper::validate_inputs(const RunOptions& run_options, const VoxelSet& voxels) {
+    const auto dims = active_dims(run_options.dimension);
     if (dims != 2 && dims != 3) {
         throw InvalidInputError("Dimension must be 2 or 3");
     }
     if (voxels.voxels.empty()) {
         throw InvalidInputError("Voxel set must not be empty");
     }
-    if (domain.voxel_size <= 0.0) {
+    if (!std::isfinite(run_options.voxel_size) || run_options.voxel_size <= 0.0) {
         throw InvalidInputError("Voxel size must be positive");
     }
 
-    // Check that the grid has positive extent, positive cell counts, and cells at least as large as the solid voxels
-    const auto cl = cell_lengths(domain);
-    for (std::size_t i = 0; i < dims; ++i) {
-        if (domain.limits[1][i] <= domain.limits[0][i]) {
-            throw InvalidInputError("Invalid grid limits");
-        }
-        if (domain.cell_counts[i] == 0) {
-            throw InvalidInputError("Cell counts must be positive");
-        }
-        if (cl[i] < domain.voxel_size) {
-            throw InvalidInputError("Voxel size is larger than marching-window grid cell dimension");
-        }
+    if (!std::isfinite(run_options.marching_voxel_ratio) || run_options.marching_voxel_ratio <= 0.0) {
+        throw InvalidInputError("Marching/voxel ratio must be positive");
     }
+    if (run_options.marching_voxel_ratio < 1.0) {
+        throw InvalidInputError("Marching/voxel ratio must be at least 1.0");
+    }
+}
 
-    // Check that the voxel set sits far enough inside the marching domain 
-    // that the weighting and ghost-voxel logic have room to 
-    // build the auxiliary lattice around it.
+/*
+ * Derive marching domain limits and cell counts.
+ */
+void MotionMapper::populate_domain_config(DomainConfig& domain, const VoxelSet& voxels) {
+    const auto dims = active_dims(domain.dimension);
+    const double ratio = domain.marching_voxel_ratio;
+
+    // The ratio is the requested physical marching-cell size in voxel units.
+    // Example: ratio = 1.6 means each marching cell is 1.6 voxel widths.
+    const double cell_length = ratio * domain.voxel_size;
+
+    /*
+     * Match the existing validation rule, then round that physical margin up
+     * to whole marching-cell layers. For ratio = 1.6 with weighting enabled:
+     * required_margin = 3.4 voxel widths, padding_cells = ceil(3.4 / 1.6) = 3.
+     */
+    const double required_margin = domain.weighting
+        ? 1.5 * cell_length + domain.voxel_size
+        : 0.5 * (cell_length + domain.voxel_size);
+    const auto padding_cells = static_cast<std::size_t>(
+        std::ceil(required_margin / cell_length));
+
+    // Find the min and max occupied voxel centroids.
     std::array<double, kMaxDims> min_vox = voxels.voxels.front().centroid;
     std::array<double, kMaxDims> max_vox = voxels.voxels.front().centroid;
     for (const auto& voxel : voxels.voxels) {
@@ -263,24 +268,33 @@ void MotionMapper::validate_inputs(const DomainConfig& domain, const VoxelSet& v
         }
     }
 
-    // if weighting is enabled, the buffer must accommodate the larger weighting radius. 
-    const double lmax = domain.weighting
-        ? 1.5 * max_component(cl, dims) + domain.voxel_size
-        : 0.5 * (max_component(cl, dims) + domain.voxel_size);
-
-    // Check that the voxel set sits far enough inside the marching domain 
-    // that the weighting and ghost-voxel logic have room to 
-    // build the auxiliary lattice around it.
+    std::array<std::array<double, kMaxDims>, 2> limits = domain.limits;
+    std::array<std::size_t, kMaxDims> cell_counts = domain.cell_counts;
     for (std::size_t i = 0; i < dims; ++i) {
-        const double lo = domain.limits[0][i] + lmax;
-        const double hi = domain.limits[1][i] - lmax;
-        if (lo >= hi) {
-            throw InvalidInputError("Insufficient buffer added to marching windows grid");
-        }
-        if (min_vox[i] < lo || max_vox[i] > hi) {
-            throw InvalidInputError("Insufficient buffer added to marching windows grid for voxel set");
-        }
+        const double span = max_vox[i] - min_vox[i];
+
+        /*
+         * Keep the requested cell length exactly, choose enough interior cells
+         * to cover the centroid span, then add the same padding on both sides.
+         */
+        const auto interior_cells = std::max<std::size_t>(
+            1,
+            static_cast<std::size_t>(std::ceil(span / cell_length)));
+        const auto total_cells = interior_cells + 2u * padding_cells;
+
+        cell_counts[i] = total_cells;
+        limits[0][i] = min_vox[i] - static_cast<double>(padding_cells) * cell_length;
+        limits[1][i] = limits[0][i] + static_cast<double>(total_cells) * cell_length;
     }
+
+    // Inactive trailing dimensions are ignored by the algorithm but kept valid.
+    for (std::size_t i = dims; i < kMaxDims; ++i) {
+        cell_counts[i] = 1;
+        limits[0][i] = voxels.voxels.front().centroid[i];
+        limits[1][i] = voxels.voxels.front().centroid[i];
+    }
+    domain.limits = limits;
+    domain.cell_counts = cell_counts;
 }
 
 /*
@@ -737,12 +751,21 @@ std::vector<SurfaceVoxelInfo> MotionMapper::collect_surface_voxels(const std::ve
  * backends and keeps unsupported 2D stages explicit.
  */
 MarchingWindowsResult MotionMapper::run(
-    const DomainConfig& domain_config,
     const VoxelSet& voxel_set,
     const RunOptions& run_options) const {
 
     if (run_options.verbose) std::cout << "Executing marching windows...\n";
-    validate_inputs(domain_config, voxel_set);
+    validate_inputs(run_options, voxel_set);
+
+    DomainConfig domain_config;
+    domain_config.dimension = run_options.dimension;
+    domain_config.voxel_size = run_options.voxel_size;
+    domain_config.marching_voxel_ratio = run_options.marching_voxel_ratio;
+    domain_config.weighting = run_options.weighting;
+    domain_config.iso_value = run_options.iso_value;
+
+    // calculate limits and cell counts
+    populate_domain_config(domain_config, voxel_set);
 
     // initialize the marching-window lattice and
     // classify every voxel as solid, void, or surface with a depth and weight

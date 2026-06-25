@@ -260,13 +260,19 @@ TEST_CASE(test_flux_mapping_tolerates_degenerate_surface_triangle) {
      * Expected outcome:
      * The production-tolerant flux path should not throw. Instead it should
      * return one empty ownership entry for the invalid triangle.
-     */
-    DomainConfig domain;
-    domain.dimension = Dimension::D3;
-    domain.limits = {{{0.0, 0.0, 0.0}, {2.0, 2.0, 2.0}}};
-    domain.cell_counts = {{2, 2, 2}};
-    domain.voxel_size = 1.0;
-    domain.weighting = false;
+    */
+    VoxelSet domain_voxels;
+    domain_voxels.voxels.push_back({{0.5, 0.5, 0.5}, 0});
+    RunOptions options;
+    options.dimension = Dimension::D3;
+    options.voxel_size = 1.0;
+    options.marching_voxel_ratio = 1.0;
+    options.weighting = false;
+    options.build_surface = false;
+    options.build_flux_association = false;
+    MarchingWindows mw;
+    const auto domain_result = mw.run(domain_voxels, options);
+    const auto& domain = domain_result.domain;
 
     SurfaceMesh mesh;
     mesh.vertices = {
@@ -278,7 +284,7 @@ TEST_CASE(test_flux_mapping_tolerates_degenerate_surface_triangle) {
     };
 
     std::vector<VoxelCell> voxel_grid;
-    voxel_grid.push_back(make_surface_voxel({0.5, 0.5, 0.5}, domain.voxel_size, 7));
+    voxel_grid.push_back(make_surface_voxel({0.5, 0.5, 0.5}, options.voxel_size, 7));
 
     const auto association = flux_mapping::build_flux_association_3d(domain, mesh, voxel_grid);
     CHECK(association.elements.size() == 1);
@@ -300,13 +306,19 @@ TEST_CASE(test_flux_mapping_tolerates_triangle_with_no_usable_overlap) {
      * Expected outcome:
      * The flux mapper should complete and leave the triangle ownership entry
      * empty rather than throwing a hard error.
-     */
-    DomainConfig domain;
-    domain.dimension = Dimension::D3;
-    domain.limits = {{{0.0, 0.0, 0.0}, {2.0, 2.0, 2.0}}};
-    domain.cell_counts = {{2, 2, 2}};
-    domain.voxel_size = 1.0;
-    domain.weighting = false;
+    */
+    VoxelSet domain_voxels;
+    domain_voxels.voxels.push_back({{0.5, 0.5, 0.5}, 0});
+    RunOptions options;
+    options.dimension = Dimension::D3;
+    options.voxel_size = 1.0;
+    options.marching_voxel_ratio = 1.0;
+    options.weighting = false;
+    options.build_surface = false;
+    options.build_flux_association = false;
+    MarchingWindows mw;
+    const auto domain_result = mw.run(domain_voxels, options);
+    const auto& domain = domain_result.domain;
 
     SurfaceMesh mesh;
     mesh.vertices = {
@@ -319,7 +331,7 @@ TEST_CASE(test_flux_mapping_tolerates_triangle_with_no_usable_overlap) {
     };
 
     std::vector<VoxelCell> voxel_grid;
-    voxel_grid.push_back(make_surface_voxel({0.5, 0.5, 0.5}, domain.voxel_size, 3));
+    voxel_grid.push_back(make_surface_voxel({0.5, 0.5, 0.5}, options.voxel_size, 3));
 
     const auto association = flux_mapping::build_flux_association_3d(domain, mesh, voxel_grid);
     CHECK(association.elements.size() == 1);
@@ -347,26 +359,17 @@ TEST_CASE(test_medium_scale_cylinder_surface_and_flux_run_completes) {
     constexpr double voxel_size = 3.3757e-6;
     constexpr int sample_length = 30;
     constexpr int sample_diameter = 28;
-    constexpr int buffer = 5;
-
-    DomainConfig domain;
-    domain.dimension = Dimension::D3;
-    domain.limits = {{{-buffer * voxel_size, -buffer * voxel_size, -buffer * voxel_size},
-                      {(sample_length + buffer) * voxel_size,
-                       (sample_diameter + buffer) * voxel_size,
-                       (sample_diameter + buffer) * voxel_size}}};
-    domain.cell_counts = {{static_cast<std::size_t>(sample_length),
-                           static_cast<std::size_t>(sample_diameter),
-                           static_cast<std::size_t>(sample_diameter)}};
-    domain.voxel_size = voxel_size;
-    domain.weighting = false;
 
     RunOptions options;
+    options.dimension = Dimension::D3;
+    options.voxel_size = voxel_size;
+    options.marching_voxel_ratio = 1.35;
+    options.weighting = false;
     options.build_surface = true;
     options.build_flux_association = true;
 
     MarchingWindows mw;
-    const auto result = mw.run(domain, make_voxel_cylinder(voxel_size, sample_length, sample_diameter), options);
+    const auto result = mw.run(make_voxel_cylinder(voxel_size, sample_length, sample_diameter), options);
 
     CHECK(!result.surface_mesh.triangles.empty());
     CHECK(result.flux_association.elements.size() == result.surface_mesh.triangles.size());

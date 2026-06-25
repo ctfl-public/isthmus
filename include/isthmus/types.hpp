@@ -17,42 +17,39 @@ enum class Dimension : std::size_t {
 };
 
 /*
- * Requests optional algorithm stages in addition to the corner-fill work that
- * is already implemented.
+ * User-facing settings for one MarchingWindows run.
  *
+ * `dimension`: 2D or 3D marching domain.
+ * `voxel_size`: edge length of one input voxel.
+ * `marching_voxel_ratio`: marching cell length divided by voxel_size.
+ * `weighting`: apply depth-based weighting to the corner fill field.
+ * `iso_value`: isosurface value for marching cubes/squares.
  * `build_surface`: run the surface extraction
  * `build_flux_association`: compute surface-voxel ownership fractions for flux mapping.
- * `write_diagnostics`: reserved for future structured debug output.
  * `verbose`: print progress messages to stdout at each major stage.
  */
 struct RunOptions {
-    bool build_surface = false;
-    bool build_flux_association = false;
-    bool write_diagnostics = false;
+    Dimension dimension = Dimension::D3;
+    double voxel_size = 1.0;
+    double marching_voxel_ratio = 0.0;
+    bool weighting = true;
+    double iso_value = 0.5;
+    bool build_surface = true;
+    bool build_flux_association = true;
     bool verbose = false;
 };
 
 /*
- * Describes the physical marching-windows domain.
+ * Resolved physical marching-windows domain.
  */
 struct DomainConfig {
-    // Dimension of the marching grid, 2 or 3.
     Dimension dimension = Dimension::D3;
-
-    // Lower and upper coordinate bounds of the marching grid in each dimension.
-    std::array<std::array<double, kMaxDims>, 2> limits{{{0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}}};
-
-    // Number of marching cells along each active axis.
-    std::array<std::size_t, kMaxDims> cell_counts{{1, 1, 1}};
-
-    // Edge length of voxel in the caller's model.
     double voxel_size = 1.0;
-
-    // Whether to apply depth-based weighting to the corner fill field.
+    double marching_voxel_ratio = 0.0;
     bool weighting = true;
-
-    // Isosurface value for the marching cubes/squares algorithm.
     double iso_value = 0.5;
+    std::array<std::array<double, kMaxDims>, 2> limits{{{0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}}};
+    std::array<std::size_t, kMaxDims> cell_counts{{1, 1, 1}};
 };
 
 /*

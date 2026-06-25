@@ -2,7 +2,7 @@
 basic_run.py — minimal end-to-end example of the isthmus Python wrapper.
 
 Demonstrates:
-  - Building a DomainConfig and VoxelSet from scratch
+  - Building RunOptions and a VoxelSet from scratch
   - Running MarchingWindows with surface extraction enabled
   - Inspecting the result (corner-fill fractions, surface voxels, mesh)
   - Using the helper utilities (voxel_set_from_centroids, corner_fill_as_array)
@@ -20,7 +20,6 @@ sys.path.insert(0, str(_repo_root / "python"))
 
 from isthmus import (
     MarchingWindows,
-    DomainConfig,
     RunOptions,
     Dimension,
     voxel_set_from_centroids,
@@ -28,23 +27,17 @@ from isthmus import (
 )
 
 # ---------------------------------------------------------------------------
-# 1. Build domain configuration
+# 1. Build run configuration
 # ---------------------------------------------------------------------------
 
 voxel_size = 1.0  # arbitrary units; set to meters in real use
 
-domain = DomainConfig()
-domain.dimension  = Dimension.D3
-domain.voxel_size = voxel_size
-domain.iso_value  = 0.5
-domain.weighting  = True
-
-# Voxels span 0..2; add 5-voxel padding on each side (required by the library).
-# Grid: -5 to +7 inclusive → 12 cells per axis, each 1 voxel_size wide.
-buf = 5
-n   = 3
-domain.limits      = [[-buf * voxel_size] * 3, [(n + buf) * voxel_size] * 3]
-domain.cell_counts = [n + 2 * buf] * 3
+options = RunOptions()
+options.dimension = Dimension.D3
+options.voxel_size = voxel_size
+options.iso_value = 0.5
+options.weighting = True
+options.marching_voxel_ratio = 1.6  # derives limits and cell_counts from the voxels
 
 # ---------------------------------------------------------------------------
 # 2. Build a simple 3-D voxel block (a 3x3x3 solid cube)
@@ -61,10 +54,9 @@ voxels = voxel_set_from_centroids(centroids)
 print(f"Voxel count  : {len(voxels.voxels)}")
 
 # ---------------------------------------------------------------------------
-# 3. Configure run options
+# 3. Select optional stages
 # ---------------------------------------------------------------------------
 
-options = RunOptions()
 options.build_surface          = True
 options.build_flux_association = True
 
@@ -73,7 +65,7 @@ options.build_flux_association = True
 # ---------------------------------------------------------------------------
 
 mw = MarchingWindows()
-result = mw.run(domain, voxels, options)
+result = mw.run(voxels, options)
 
 # ---------------------------------------------------------------------------
 # 5. Inspect results

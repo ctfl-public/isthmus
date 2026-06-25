@@ -5,7 +5,7 @@ This standalone example constructs a simple 2D voxelized square, runs the ISTHMU
 ## What It Demonstrates
 
 - How a consumer project includes `isthmus/marching_windows.hpp`
-- How to configure a small `DomainConfig`
+- How to configure a small `RunOptions` object
 - How to build a `VoxelSet` in user code
 - How to call `isthmus::MarchingWindows::run`
 

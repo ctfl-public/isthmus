@@ -3,15 +3,14 @@ isthmus — Python bindings for the ISTHMUS marching-windows library.
 
 Quick start
 -----------
->>> from isthmus import MarchingWindows, DomainConfig, VoxelSet, VoxelRecord, RunOptions, Dimension
+>>> from isthmus import MarchingWindows, VoxelSet, VoxelRecord, RunOptions, Dimension
 >>> mw = MarchingWindows()
->>> domain = DomainConfig()
->>> domain.dimension = Dimension.D3
->>> domain.limits = [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]]
->>> domain.cell_counts = [10, 10, 10]
->>> domain.voxel_size = 0.1
+>>> options = RunOptions()
+>>> options.dimension = Dimension.D3
+>>> options.voxel_size = 0.1
+>>> options.marching_voxel_ratio = 1.6
 >>> voxels = voxel_set_from_centroids([[0.5, 0.5, 0.5], [0.4, 0.5, 0.5]])
->>> result = mw.run(domain, voxels)
+>>> result = mw.run(voxels, options)
 """
 
 from ._isthmus import (  # noqa: F401
