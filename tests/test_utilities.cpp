@@ -67,7 +67,7 @@ void append_ifd_entry(
  * Write a tiny 2-page uncompressed 8-bit grayscale TIFF stack with one active
  * voxel in each slice.
  */
-std::filesystem::path write_test_tiff_stack() {
+std::filesystem::path write_test_tiff_stack(std::uint8_t second_active_value = 1u) {
     const std::filesystem::path path =
         std::filesystem::temp_directory_path() / "isthmus_test_stack.tif";
 
@@ -131,7 +131,7 @@ std::filesystem::path write_test_tiff_stack() {
     bytes.push_back(0u);
     bytes.push_back(0u);
     bytes.push_back(0u);
-    bytes.push_back(1u);
+    bytes.push_back(second_active_value);
 
     std::ofstream out(path, std::ios::binary);
     out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
@@ -167,6 +167,36 @@ TEST_CASE(test_load_active_voxels_from_tiff_reads_narrow_stack) {
     CHECK_CLOSE(voxels.voxels[1].centroid[0], 0.5, 1e-12);
     CHECK_CLOSE(voxels.voxels[1].centroid[1], 0.5, 1e-12);
     CHECK_CLOSE(voxels.voxels[1].centroid[2], 0.5, 1e-12);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(test_load_labeled_voxels_from_tiff_preserves_nonzero_values) {
+    using namespace isthmus;
+
+    /*
+     * Case:
+     * Load a tiny hand-written TIFF stack where occupied voxels use labels 1
+     * and 2 rather than a strictly binary mask.
+     *
+     * Expected outcome:
+     * The label-preserving loader should emit both nonzero voxels and store
+     * their grayscale labels as material tags.
+     */
+    const auto path = write_test_tiff_stack(2u);
+    const auto labeled = utilities::load_labeled_voxels_from_tiff(path, 0.5);
+
+    CHECK(labeled.dims[0] == 2u);
+    CHECK(labeled.dims[1] == 2u);
+    CHECK(labeled.dims[2] == 2u);
+    CHECK(labeled.voxels.voxels.size() == 2u);
+    CHECK(labeled.voxels.voxels[0].material_tag.has_value());
+    CHECK(labeled.voxels.voxels[1].material_tag.has_value());
+    CHECK(labeled.voxels.voxels[0].material_tag.value_or("") == "1");
+    CHECK(labeled.voxels.voxels[1].material_tag.value_or("") == "2");
+    CHECK_CLOSE(labeled.voxels.voxels[1].centroid[0], 0.5, 1e-12);
+    CHECK_CLOSE(labeled.voxels.voxels[1].centroid[1], 0.5, 1e-12);
+    CHECK_CLOSE(labeled.voxels.voxels[1].centroid[2], 0.5, 1e-12);
 
     std::filesystem::remove(path);
 }

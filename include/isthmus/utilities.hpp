@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <cstdint>
 
 #include "isthmus/types.hpp"
 
@@ -21,6 +22,18 @@ struct VoxelSliceResult {
 };
 
 /*
+ * Return type for label-preserving TIFF volume import.
+ *
+ * The voxels field contains every nonzero TIFF voxel. Each VoxelRecord's
+ * material_tag is the integer grayscale value encoded as decimal text.
+ * Dimensions are stored in native `(z, y, x)` TIFF stack order.
+ */
+struct LabeledTiffVoxelSet {
+    VoxelSet voxels;
+    std::array<std::size_t, 3> dims{{0u, 0u, 0u}};
+};
+
+/*
  * Load all active voxels from a narrow 8-bit grayscale TIFF stack.
  *
  * Each voxel with value of 1 in the image stack is interpreted as an occupied lattice cell
@@ -32,6 +45,17 @@ struct VoxelSliceResult {
  *  centroid[2] = tiff_column × voxel_size
  */
 VoxelSet load_active_voxels_from_tiff(
+    const std::filesystem::path& tiff_path,
+    double voxel_size);
+
+/*
+ * Load all nonzero voxels from a narrow 8-bit grayscale TIFF stack while
+ * preserving each voxel's grayscale value as its material tag.
+ *
+ * Coordinates follow the same `(Z, Y, X)` convention as
+ * load_active_voxels_from_tiff.
+ */
+LabeledTiffVoxelSet load_labeled_voxels_from_tiff(
     const std::filesystem::path& tiff_path,
     double voxel_size);
 

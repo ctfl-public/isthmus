@@ -341,6 +341,39 @@ VoxelSet load_active_voxels_from_tiff(
     return voxels;
 }
 
+LabeledTiffVoxelSet load_labeled_voxels_from_tiff(
+    const std::filesystem::path& tiff_path,
+    double voxel_size) {
+    const auto volume = load_tiff_volume(tiff_path);
+
+    LabeledTiffVoxelSet result;
+    result.dims = volume.dims;
+    std::size_t voxel_id = 0u;
+
+    for (std::size_t z = 0; z < volume.dims[0]; ++z) {
+        for (std::size_t y = 0; y < volume.dims[1]; ++y) {
+            for (std::size_t x = 0; x < volume.dims[2]; ++x) {
+                const auto value = volume.at(z, y, x);
+                if (value == 0u) {
+                    continue;
+                }
+
+                VoxelRecord record;
+                record.centroid = {
+                    static_cast<double>(z) * voxel_size,
+                    static_cast<double>(y) * voxel_size,
+                    static_cast<double>(x) * voxel_size
+                };
+                record.original_id = voxel_id++;
+                record.material_tag = std::to_string(static_cast<unsigned int>(value));
+                result.voxels.voxels.push_back(record);
+            }
+        }
+    }
+
+    return result;
+}
+
 VoxelSliceResult tiff_slicer(
     const std::filesystem::path& tiff_path,
     double x,
