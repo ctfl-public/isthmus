@@ -29,8 +29,8 @@ struct TiffPageInfo {
 };
 
 /*
- * This in-memory payload keeps the narrow TIFF data in a regular `(z, y, x)`
- * indexing order for the volume helpers.
+ * This in-memory payload keeps the narrow TIFF data in page/row/column order
+ * for parsing. Public voxel outputs normalize that storage to x/y/z.
  */
 struct BinaryTiffVolume {
     std::array<std::size_t, 3> dims{{0u, 0u, 0u}};
@@ -328,9 +328,9 @@ VoxelSet load_active_voxels_from_tiff(
 
                 VoxelRecord record;
                 record.centroid = {
-                    static_cast<double>(z) * voxel_size,
+                    static_cast<double>(x) * voxel_size,
                     static_cast<double>(y) * voxel_size,
-                    static_cast<double>(x) * voxel_size
+                    static_cast<double>(z) * voxel_size
                 };
                 record.original_id = voxel_id++;
                 voxels.voxels.push_back(record);
@@ -347,7 +347,7 @@ LabeledTiffVoxelSet load_labeled_voxels_from_tiff(
     const auto volume = load_tiff_volume(tiff_path);
 
     LabeledTiffVoxelSet result;
-    result.dims = volume.dims;
+    result.dims = {volume.dims[2], volume.dims[1], volume.dims[0]};
     std::size_t voxel_id = 0u;
 
     for (std::size_t z = 0; z < volume.dims[0]; ++z) {
@@ -360,9 +360,9 @@ LabeledTiffVoxelSet load_labeled_voxels_from_tiff(
 
                 VoxelRecord record;
                 record.centroid = {
-                    static_cast<double>(z) * voxel_size,
+                    static_cast<double>(x) * voxel_size,
                     static_cast<double>(y) * voxel_size,
-                    static_cast<double>(x) * voxel_size
+                    static_cast<double>(z) * voxel_size
                 };
                 record.original_id = voxel_id++;
                 record.material_tag = std::to_string(static_cast<unsigned int>(value));
@@ -412,9 +412,9 @@ VoxelSliceResult tiff_slicer(
     VoxelSliceResult result;
     result.limits = {{
         {-lb * voxel_size, -lb * voxel_size, -lb * voxel_size},
-        {(effective_height + lb) * voxel_size,
+        {(length + lb) * voxel_size,
          (length + lb) * voxel_size,
-         (length + lb) * voxel_size}
+         (effective_height + lb) * voxel_size}
     }};
 
     std::size_t voxel_id = 0u;
@@ -432,9 +432,9 @@ VoxelSliceResult tiff_slicer(
 
                 VoxelRecord record;
                 record.centroid = {
-                    static_cast<double>(local_z) * voxel_size,
+                    static_cast<double>(local_x) * voxel_size,
                     static_cast<double>(local_y) * voxel_size,
-                    static_cast<double>(local_x) * voxel_size
+                    static_cast<double>(local_z) * voxel_size
                 };
                 record.original_id = voxel_id++;
                 result.voxels.voxels.push_back(record);

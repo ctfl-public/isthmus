@@ -26,7 +26,7 @@ struct VoxelSliceResult {
  *
  * The voxels field contains every nonzero TIFF voxel. Each VoxelRecord's
  * material_tag is the integer grayscale value encoded as decimal text.
- * Dimensions are stored in native `(z, y, x)` TIFF stack order.
+ * Dimensions are normalized to public `(x, y, z)` order.
  */
 struct LabeledTiffVoxelSet {
     VoxelSet voxels;
@@ -39,10 +39,10 @@ struct LabeledTiffVoxelSet {
  * Each voxel with value of 1 in the image stack is interpreted as an occupied lattice cell
  * and then scaled by `voxel_size` to produce the marching input points.
  * 
- * It fills centroids in (Z, Y, X) order: 
- *  centroid[0] = tiff_page × voxel_size, 
+ * It fills centroids in public `(x, y, z)` order:
+ *  centroid[0] = tiff_column × voxel_size,
  *  centroid[1] = tiff_row × voxel_size,
- *  centroid[2] = tiff_column × voxel_size
+ *  centroid[2] = tiff_page × voxel_size
  */
 VoxelSet load_active_voxels_from_tiff(
     const std::filesystem::path& tiff_path,
@@ -52,7 +52,7 @@ VoxelSet load_active_voxels_from_tiff(
  * Load all nonzero voxels from a narrow 8-bit grayscale TIFF stack while
  * preserving each voxel's grayscale value as its material tag.
  *
- * Coordinates follow the same `(Z, Y, X)` convention as
+ * Coordinates follow the same public `(x, y, z)` convention as
  * load_active_voxels_from_tiff.
  */
 LabeledTiffVoxelSet load_labeled_voxels_from_tiff(

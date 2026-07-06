@@ -65,7 +65,8 @@ void append_ifd_entry(
 
 /*
  * Write a tiny 2-page uncompressed 8-bit grayscale TIFF stack with one active
- * voxel in each slice.
+ * voxel in each slice. The 3x2x2 shape and second active voxel intentionally
+ * distinguish TIFF page/row/column order from public x/y/z order.
  */
 std::filesystem::path write_test_tiff_stack(std::uint8_t second_active_value = 1u) {
     const std::filesystem::path path =
@@ -76,10 +77,11 @@ std::filesystem::path write_test_tiff_stack(std::uint8_t second_active_value = 1
     const std::uint32_t first_ifd_offset = 8u;
     const std::uint32_t second_ifd_offset = first_ifd_offset + static_cast<std::uint32_t>(ifd_size);
     const std::uint32_t first_pixels_offset = second_ifd_offset + static_cast<std::uint32_t>(ifd_size);
-    const std::uint32_t second_pixels_offset = first_pixels_offset + 4u;
+    const std::uint32_t pixels_per_page = 6u;
+    const std::uint32_t second_pixels_offset = first_pixels_offset + pixels_per_page;
 
     std::vector<std::uint8_t> bytes;
-    bytes.reserve(second_pixels_offset + 4u);
+    bytes.reserve(second_pixels_offset + pixels_per_page);
 
     /*
      * TIFF header:
@@ -93,31 +95,31 @@ std::filesystem::path write_test_tiff_stack(std::uint8_t second_active_value = 1
     append_u32(bytes, first_ifd_offset);
 
     /*
-     * First 2x2 image page with one active voxel at local `(0, 0)`.
+     * First 3x2 image page with one active voxel at local row/column `(0, 0)`.
      */
     append_u16(bytes, entry_count);
-    append_ifd_entry(bytes, 256u, 4u, 1u, 2u);
+    append_ifd_entry(bytes, 256u, 4u, 1u, 3u);
     append_ifd_entry(bytes, 257u, 4u, 1u, 2u);
     append_ifd_entry(bytes, 258u, 3u, 1u, 8u);
     append_ifd_entry(bytes, 259u, 3u, 1u, 1u);
     append_ifd_entry(bytes, 273u, 4u, 1u, first_pixels_offset);
     append_ifd_entry(bytes, 277u, 3u, 1u, 1u);
     append_ifd_entry(bytes, 278u, 4u, 1u, 2u);
-    append_ifd_entry(bytes, 279u, 4u, 1u, 4u);
+    append_ifd_entry(bytes, 279u, 4u, 1u, pixels_per_page);
     append_u32(bytes, second_ifd_offset);
 
     /*
-     * Second 2x2 image page with one active voxel at local `(1, 1)`.
+     * Second 3x2 image page with one active voxel at local row/column `(1, 0)`.
      */
     append_u16(bytes, entry_count);
-    append_ifd_entry(bytes, 256u, 4u, 1u, 2u);
+    append_ifd_entry(bytes, 256u, 4u, 1u, 3u);
     append_ifd_entry(bytes, 257u, 4u, 1u, 2u);
     append_ifd_entry(bytes, 258u, 3u, 1u, 8u);
     append_ifd_entry(bytes, 259u, 3u, 1u, 1u);
     append_ifd_entry(bytes, 273u, 4u, 1u, second_pixels_offset);
     append_ifd_entry(bytes, 277u, 3u, 1u, 1u);
     append_ifd_entry(bytes, 278u, 4u, 1u, 2u);
-    append_ifd_entry(bytes, 279u, 4u, 1u, 4u);
+    append_ifd_entry(bytes, 279u, 4u, 1u, pixels_per_page);
     append_u32(bytes, 0u);
 
     /*
@@ -127,11 +129,15 @@ std::filesystem::path write_test_tiff_stack(std::uint8_t second_active_value = 1
     bytes.push_back(0u);
     bytes.push_back(0u);
     bytes.push_back(0u);
+    bytes.push_back(0u);
+    bytes.push_back(0u);
 
     bytes.push_back(0u);
     bytes.push_back(0u);
     bytes.push_back(0u);
     bytes.push_back(second_active_value);
+    bytes.push_back(0u);
+    bytes.push_back(0u);
 
     std::ofstream out(path, std::ios::binary);
     out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
@@ -150,12 +156,12 @@ TEST_CASE(test_load_active_voxels_from_tiff_reads_narrow_stack) {
      * helper.
      *
      * Sketch:
-     *   slice 0: active at (0, 0)
-     *   slice 1: active at (1, 1)
+     *   slice 0: active at row/column (0, 0)
+     *   slice 1: active at row/column (1, 0)
      *
      * Expected outcome:
-     * The loader should emit exactly two active voxels in the native `(z, y,
-     * x)` physical coordinate convention.
+     * The loader should emit exactly two active voxels in public `(x, y, z)`
+     * physical coordinate order.
      */
     const auto path = write_test_tiff_stack();
     const auto voxels = utilities::load_active_voxels_from_tiff(path, 0.5);
@@ -164,7 +170,7 @@ TEST_CASE(test_load_active_voxels_from_tiff_reads_narrow_stack) {
     CHECK_CLOSE(voxels.voxels[0].centroid[0], 0.0, 1e-12);
     CHECK_CLOSE(voxels.voxels[0].centroid[1], 0.0, 1e-12);
     CHECK_CLOSE(voxels.voxels[0].centroid[2], 0.0, 1e-12);
-    CHECK_CLOSE(voxels.voxels[1].centroid[0], 0.5, 1e-12);
+    CHECK_CLOSE(voxels.voxels[1].centroid[0], 0.0, 1e-12);
     CHECK_CLOSE(voxels.voxels[1].centroid[1], 0.5, 1e-12);
     CHECK_CLOSE(voxels.voxels[1].centroid[2], 0.5, 1e-12);
 
@@ -186,7 +192,7 @@ TEST_CASE(test_load_labeled_voxels_from_tiff_preserves_nonzero_values) {
     const auto path = write_test_tiff_stack(2u);
     const auto labeled = utilities::load_labeled_voxels_from_tiff(path, 0.5);
 
-    CHECK(labeled.dims[0] == 2u);
+    CHECK(labeled.dims[0] == 3u);
     CHECK(labeled.dims[1] == 2u);
     CHECK(labeled.dims[2] == 2u);
     CHECK(labeled.voxels.voxels.size() == 2u);
@@ -194,7 +200,7 @@ TEST_CASE(test_load_labeled_voxels_from_tiff_preserves_nonzero_values) {
     CHECK(labeled.voxels.voxels[1].material_tag.has_value());
     CHECK(labeled.voxels.voxels[0].material_tag.value_or("") == "1");
     CHECK(labeled.voxels.voxels[1].material_tag.value_or("") == "2");
-    CHECK_CLOSE(labeled.voxels.voxels[1].centroid[0], 0.5, 1e-12);
+    CHECK_CLOSE(labeled.voxels.voxels[1].centroid[0], 0.0, 1e-12);
     CHECK_CLOSE(labeled.voxels.voxels[1].centroid[1], 0.5, 1e-12);
     CHECK_CLOSE(labeled.voxels.voxels[1].centroid[2], 0.5, 1e-12);
 
@@ -214,22 +220,19 @@ TEST_CASE(test_tiff_slicer_matches_local_slice_convention) {
      * active voxels should be reported in local slice coordinates.
      */
     const auto path = write_test_tiff_stack();
-    const auto slice = utilities::tiff_slicer(path, 1.0, 1.0, 0.0, 2.0, 0.5, 1.0, 2.0);
+    const auto slice = utilities::tiff_slicer(path, 1.0, 1.0, 0.0, 2.0, 0.5, 1.0, 1.0);
 
-    CHECK(slice.voxels.voxels.size() == 2u);
+    CHECK(slice.voxels.voxels.size() == 1u);
     CHECK_CLOSE(slice.limits[0][0], -0.5, 1e-12);
     CHECK_CLOSE(slice.limits[0][1], -0.5, 1e-12);
     CHECK_CLOSE(slice.limits[0][2], -0.5, 1e-12);
     CHECK_CLOSE(slice.limits[1][0], 1.5, 1e-12);
     CHECK_CLOSE(slice.limits[1][1], 1.5, 1e-12);
-    CHECK_CLOSE(slice.limits[1][2], 1.5, 1e-12);
+    CHECK_CLOSE(slice.limits[1][2], 1.0, 1e-12);
 
     CHECK_CLOSE(slice.voxels.voxels[0].centroid[0], 0.0, 1e-12);
     CHECK_CLOSE(slice.voxels.voxels[0].centroid[1], 0.0, 1e-12);
     CHECK_CLOSE(slice.voxels.voxels[0].centroid[2], 0.0, 1e-12);
-    CHECK_CLOSE(slice.voxels.voxels[1].centroid[0], 0.5, 1e-12);
-    CHECK_CLOSE(slice.voxels.voxels[1].centroid[1], 0.5, 1e-12);
-    CHECK_CLOSE(slice.voxels.voxels[1].centroid[2], 0.5, 1e-12);
 
     std::filesystem::remove(path);
 }
