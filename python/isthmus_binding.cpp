@@ -45,6 +45,10 @@ PYBIND11_MODULE(_isthmus, m) {
             "Apply depth-based weighting to the corner fill field (default: True).")
         .def_readwrite("iso_value", &RunOptions::iso_value,
             "Isosurface threshold for the marching cubes/squares algorithm (default: 0.5).")
+        .def_readwrite("edge_clamp", &RunOptions::edge_clamp,
+            "Minimum interpolation fraction kept between a surface vertex and the "
+            "marching-grid corners of its edge, in [0, 0.5). Bounds the smallest "
+            "edge/triangle of the mesh to ~edge_clamp * cell length (default: 0.01).")
         .def_readwrite("build_surface", &RunOptions::build_surface,
             "Run the surface extraction stage (default: True).")
         .def_readwrite("build_flux_association", &RunOptions::build_flux_association,
@@ -83,6 +87,9 @@ PYBIND11_MODULE(_isthmus, m) {
             "Apply depth-based weighting to the corner fill field (default: True).")
         .def_readwrite("iso_value", &DomainConfig::iso_value,
             "Isosurface threshold for the marching cubes/squares algorithm (default: 0.5).")
+        .def_readwrite("edge_clamp", &DomainConfig::edge_clamp,
+            "Minimum interpolation fraction kept between a surface vertex and the "
+            "marching-grid corners of its edge, in [0, 0.5) (default: 0.01).")
         .def("__repr__", [](const DomainConfig& d) {
             std::ostringstream ss;
             ss << "DomainConfig(dimension=D" << static_cast<int>(d.dimension)

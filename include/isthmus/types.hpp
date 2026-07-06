@@ -24,6 +24,11 @@ enum class Dimension : std::size_t {
  * `marching_voxel_ratio`: marching cell length divided by voxel_size.
  * `weighting`: apply depth-based weighting to the corner fill field.
  * `iso_value`: isosurface value for marching cubes/squares.
+ * `edge_clamp`: minimum interpolation fraction kept between a surface vertex
+ *   and the marching-grid corners of its edge, in [0, 0.5). It bounds the
+ *   smallest edge length and triangle area of the extracted mesh to
+ *   ~edge_clamp * marching cell length, which DSMC/SPARTA cut-cell tolerances
+ *   require. 0 disables the clamp and allows degenerate sliver triangles.
  * `build_surface`: run the surface extraction
  * `build_flux_association`: compute surface-voxel ownership fractions for flux mapping.
  * `verbose`: print progress messages to stdout at each major stage.
@@ -34,6 +39,7 @@ struct RunOptions {
     double marching_voxel_ratio = 0.0;
     bool weighting = true;
     double iso_value = 0.5;
+    double edge_clamp = 0.01;
     bool build_surface = true;
     bool build_flux_association = true;
     bool verbose = false;
@@ -48,6 +54,7 @@ struct DomainConfig {
     double marching_voxel_ratio = 0.0;
     bool weighting = true;
     double iso_value = 0.5;
+    double edge_clamp = 0.01;
     std::array<std::array<double, kMaxDims>, 2> limits{{{0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}}};
     std::array<std::size_t, kMaxDims> cell_counts{{1, 1, 1}};
 };

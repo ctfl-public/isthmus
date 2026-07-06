@@ -225,11 +225,12 @@ public:
      * The dimensions refer to the scalar volume, not the number of marching
      * cubes.
      */
-    Cell(const LutProvider& luts, int nx, int ny, int nz)
+    Cell(const LutProvider& luts, int nx, int ny, int nz, double edge_clamp)
         : luts_(luts),
           nx_(nx),
           ny_(ny),
           nz_(nz),
+          edge_clamp_(edge_clamp),
           face_layer1_(static_cast<std::size_t>(nx * ny * 4), -1),
           face_layer2_(static_cast<std::size_t>(nx * ny * 4), -1),
           active_face_layer_(&face_layer1_) {}
@@ -393,6 +394,17 @@ private:
     }
 
     /*
+     * Keep an interpolation fraction strictly inside (0, 1).
+     *
+     * The clamp width scales with the marching cell, so the minimum feature
+     * size of the extracted mesh is edge_clamp_ * cell_length. Topology is
+     * untouched because it depends only on corner signs, not vertex positions.
+     */
+    double clamp_fraction(double fraction) const {
+        return std::clamp(fraction, edge_clamp_, 1.0 - edge_clamp_);
+    }
+
+    /*
      * Accumulate one gradient contribution onto an already-created vertex.
      */
     void add_gradient(int vertex_index, float gx, float gy, float gz) {
@@ -528,10 +540,15 @@ private:
         fx += 1.0 * w6; fy += 1.0 * w6; fz += 1.0 * w6; ff += w6;
         fx += 0.0 * w7; fy += 1.0 * w7; fz += 1.0 * w7; ff += w7;
 
+        /*
+         * Clamp the cube-local fractions so the center vertex cannot land on a
+         * cube face or corner, for the same robustness reason as the edge
+         * interpolation clamp in add_face_from_edge_index().
+         */
         const double step_value = static_cast<double>(step_);
-        v12_x_ = static_cast<double>(x_) + step_value * fx / ff;
-        v12_y_ = static_cast<double>(y_) + step_value * fy / ff;
-        v12_z_ = static_cast<double>(z_) + step_value * fz / ff;
+        v12_x_ = static_cast<double>(x_) + step_value * clamp_fraction(fx / ff);
+        v12_y_ = static_cast<double>(y_) + step_value * clamp_fraction(fy / ff);
+        v12_z_ = static_cast<double>(z_) + step_value * clamp_fraction(fz / ff);
 
         v12_xg_ =
             w0 * vg_[0] + w1 * vg_[3] + w2 * vg_[6] + w3 * vg_[9] +
@@ -591,26 +608,28 @@ private:
             return;
         }
 
-        double fx = 0.0;
-        double fy = 0.0;
-        double fz = 0.0;
-        double ff = 0.0;
+        /*
+         * The inverse-|value| weights reduce to the standard marching-cubes
+         * linear interpolation along the cut edge: u is the fraction from
+         * corner 1 toward corner 2.
+         *
+         * u is clamped away from 0 and 1 so no vertex can land on (or within
+         * edge_clamp of) a marching-grid corner. Unclamped, a corner value
+         * near the iso level puts the vertex essentially on the corner, which
+         * is what produced the zero-area triangles and the ~1e-10 m sliver
+         * edges that break SPARTA's cut3d/flood-fill tolerances downstream.
+         */
+        const double u = clamp_fraction(strength2 / (strength1 + strength2));
 
-        fx += static_cast<double>(dx1) * strength1;
-        fy += static_cast<double>(dy1) * strength1;
-        fz += static_cast<double>(dz1) * strength1;
-        ff += strength1;
-
-        fx += static_cast<double>(dx2) * strength2;
-        fy += static_cast<double>(dy2) * strength2;
-        fz += static_cast<double>(dz2) * strength2;
-        ff += strength2;
+        const double fx = static_cast<double>(dx1) + (static_cast<double>(dx2) - static_cast<double>(dx1)) * u;
+        const double fy = static_cast<double>(dy1) + (static_cast<double>(dy2) - static_cast<double>(dy1)) * u;
+        const double fz = static_cast<double>(dz1) + (static_cast<double>(dz2) - static_cast<double>(dz1)) * u;
 
         const double step_value = static_cast<double>(step_);
         vertex_index = add_vertex(
-            static_cast<double>(x_) + step_value * fx / ff,
-            static_cast<double>(y_) + step_value * fy / ff,
-            static_cast<double>(z_) + step_value * fz / ff);
+            static_cast<double>(x_) + step_value * fx,
+            static_cast<double>(y_) + step_value * fy,
+            static_cast<double>(z_) + step_value * fz);
 
         (*active_face_layer_)[static_cast<std::size_t>(face_index)] = vertex_index;
         add_face(vertex_index);
@@ -622,6 +641,7 @@ private:
     int nx_ = 0;
     int ny_ = 0;
     int nz_ = 0;
+    double edge_clamp_ = 0.0;
 
     int x_ = 0;
     int y_ = 0;
@@ -1124,11 +1144,21 @@ SurfaceMesh extract_surface_mesh_3d(
     const int nz = static_cast<int>(corner_dims[2]);
 
     /*
+     * The interpolation clamp keeps every extracted vertex at least
+     * edge_clamp * cell_length away from marching-grid corner planes along
+     * its edge, which bounds the minimum edge length and triangle area of
+     * the raw mesh. Values must stay below 0.5 to remain meaningful.
+     */
+    if (!(domain.edge_clamp >= 0.0) || domain.edge_clamp >= 0.5) {
+        throw InvalidInputError("edge_clamp must be in [0, 0.5)");
+    }
+
+    /*
      * The Lewiner traversal marches the corner volume in [z][y][x] order and
      * reuses vertices through a per-layer face cache.
      */
     const auto& luts = lut_provider();
-    Cell cell(luts, nx, ny, nz);
+    Cell cell(luts, nx, ny, nz, domain.edge_clamp);
 
     for (int z = 0; z < nz - 1; ++z) {
         cell.new_z_value();

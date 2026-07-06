@@ -763,6 +763,7 @@ MarchingWindowsResult MotionMapper::run(
     domain_config.marching_voxel_ratio = run_options.marching_voxel_ratio;
     domain_config.weighting = run_options.weighting;
     domain_config.iso_value = run_options.iso_value;
+    domain_config.edge_clamp = run_options.edge_clamp;
 
     // calculate limits and cell counts
     populate_domain_config(domain_config, voxel_set);
