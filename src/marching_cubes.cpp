@@ -334,9 +334,9 @@ public:
 
         for (const auto& vertex : vertices_) {
             out.push_back({
-                domain.limits[0][0] + static_cast<double>(vertex[0]) * cell_lengths[0],
-                domain.limits[0][1] + static_cast<double>(vertex[1]) * cell_lengths[1],
-                domain.limits[0][2] + static_cast<double>(vertex[2]) * cell_lengths[2]
+                domain.limits[0][0] + vertex[0] * cell_lengths[0],
+                domain.limits[0][1] + vertex[1] * cell_lengths[1],
+                domain.limits[0][2] + vertex[2] * cell_lengths[2]
             });
         }
 
@@ -379,8 +379,13 @@ private:
      * Record one vertex and keep normals/values arrays in sync with it. The
      * current public API does not expose normals or values, but the internal
      * storage preserves the Lewiner backend structure for later expansion.
+     *
+     * Vertices are stored in double precision. The reference implementation
+     * used float here, which quantized nearly-coincident vertices onto the
+     * same float32 value and produced zero-area triangles and ~1e-10 m edges
+     * in production meshes.
      */
-    int add_vertex(float x, float y, float z) {
+    int add_vertex(double x, double y, double z) {
         vertices_.push_back({x, y, z});
         normals_.push_back({0.0F, 0.0F, 0.0F});
         values_.push_back(0.0F);
@@ -524,9 +529,9 @@ private:
         fx += 0.0 * w7; fy += 1.0 * w7; fz += 1.0 * w7; ff += w7;
 
         const double step_value = static_cast<double>(step_);
-        v12_x_ = static_cast<float>(static_cast<double>(x_) + step_value * fx / ff);
-        v12_y_ = static_cast<float>(static_cast<double>(y_) + step_value * fy / ff);
-        v12_z_ = static_cast<float>(static_cast<double>(z_) + step_value * fz / ff);
+        v12_x_ = static_cast<double>(x_) + step_value * fx / ff;
+        v12_y_ = static_cast<double>(y_) + step_value * fy / ff;
+        v12_z_ = static_cast<double>(z_) + step_value * fz / ff;
 
         v12_xg_ =
             w0 * vg_[0] + w1 * vg_[3] + w2 * vg_[6] + w3 * vg_[9] +
@@ -603,9 +608,9 @@ private:
 
         const double step_value = static_cast<double>(step_);
         vertex_index = add_vertex(
-            static_cast<float>(static_cast<double>(x_) + step_value * fx / ff),
-            static_cast<float>(static_cast<double>(y_) + step_value * fy / ff),
-            static_cast<float>(static_cast<double>(z_) + step_value * fz / ff));
+            static_cast<double>(x_) + step_value * fx / ff,
+            static_cast<double>(y_) + step_value * fy / ff,
+            static_cast<double>(z_) + step_value * fz / ff);
 
         (*active_face_layer_)[static_cast<std::size_t>(face_index)] = vertex_index;
         add_face(vertex_index);
@@ -636,9 +641,9 @@ private:
     std::array<double, 24> vg_{};
     double vmax_ = 0.0;
 
-    float v12_x_ = 0.0F;
-    float v12_y_ = 0.0F;
-    float v12_z_ = 0.0F;
+    double v12_x_ = 0.0;
+    double v12_y_ = 0.0;
+    double v12_z_ = 0.0;
     float v12_xg_ = 0.0F;
     float v12_yg_ = 0.0F;
     float v12_zg_ = 0.0F;
@@ -650,7 +655,7 @@ private:
     std::vector<int> face_layer2_;
     std::vector<int>* active_face_layer_ = nullptr;
 
-    std::vector<std::array<float, 3>> vertices_;
+    std::vector<std::array<double, 3>> vertices_;
     std::vector<std::array<float, 3>> normals_;
     std::vector<float> values_;
     std::vector<int> faces_;
