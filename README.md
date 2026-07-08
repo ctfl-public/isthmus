@@ -19,6 +19,8 @@ Please also see [`third-party-licenses/`](third-party-licenses/) for licensing i
 ## Table of Contents
 - [System Requirements](#system-requirements)
 - [Installation](#installation)
+    - [Native C++ build](#native-c-build)
+    - [Python API install](#python-api-install)
     - [Step 1: configure the native build](#step-1-configure-the-native-build)
     - [Step 2: build ISTHMUS](#step-2-build-isthmus)
     - [Step 3: run the native tests](#step-3-run-the-native-tests)
@@ -46,7 +48,14 @@ Please also see [`third-party-licenses/`](third-party-licenses/) for licensing i
 
 ## Installation
 
-The steps below cover the native C++ build. For the Python wrapper, including quick install, manual installation, and editable development installs, see [python/README.md](python/README.md).
+The repository supports two common install paths:
+
+- [Native C++ build](#native-c-build), which produces `libisthmus_cpp.a` for C++ solvers and standalone examples.
+- [Python API install](#python-api-install), which builds the `_isthmus` extension required for `import isthmus`.
+
+### Native C++ build
+
+Use this path when you want to link ISTHMUS into C++ code. It does not install the Python API.
 
 ### Step 1: configure the native build
 
@@ -100,6 +109,32 @@ make -C examples/ablation_single_phase
 
 The local example `Makefile`s link against `build/libisthmus_cpp.a` by default.
 Override `ISTHMUS_BUILD_DIR=/path/to/build` if your native library archive lives somewhere else.
+
+### Python API install
+
+Use this path when you want to call ISTHMUS from Python with `import isthmus`.
+The regular native C++ build above does not create the `_isthmus` Python extension.
+
+The shortest install path is:
+
+```bash
+python3 -m pip install .
+python3 -c "import isthmus; print(isthmus.__version__)"
+```
+
+For an editable development install, run:
+
+```bash
+python3 -m pip install -e . --no-build-isolation
+```
+
+The helper script wraps the same workflow and runs a smoke test:
+
+```bash
+./install.sh
+```
+
+For more Python packaging details, see [python/README.md](python/README.md).
 
 ## ISTHMUS test
 To confirm everything is working as expected, configure and build the repository root, then run

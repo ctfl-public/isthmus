@@ -13,23 +13,32 @@ Quick start
 >>> result = mw.run(voxels, options)
 """
 
-from ._isthmus import (  # noqa: F401
-    MAX_DIMS,
-    Dimension,
-    RunOptions,
-    DomainConfig,
-    VoxelRecord,
-    VoxelSet,
-    SurfaceVoxelInfo,
-    SurfaceMesh,
-    FluxElementOwnership,
-    FluxAssociation,
-    MarchingWindowsResult,
-    MarchingWindows,
-    IsthmusError,
-    InvalidInputError,
-    IsthmusNotImplementedError,
-)
+try:
+    from ._isthmus import (  # noqa: F401
+        MAX_DIMS,
+        Dimension,
+        RunOptions,
+        DomainConfig,
+        VoxelRecord,
+        VoxelSet,
+        SurfaceVoxelInfo,
+        SurfaceMesh,
+        FluxElementOwnership,
+        FluxAssociation,
+        MarchingWindowsResult,
+        MarchingWindows,
+        IsthmusError,
+        InvalidInputError,
+        IsthmusNotImplementedError,
+    )
+except ImportError as exc:
+    raise ImportError(
+        "ISTHMUS Python extension '_isthmus' is not built or is not importable. "
+        "Install the Python package with `pip install .`, run `./install.sh`, "
+        "or build manually with `cmake -S . -B build-py "
+        "-DISTHMUS_BUILD_PYTHON=ON -DISTHMUS_BUILD_TESTS=OFF` followed by "
+        "`cmake --build build-py`."
+    ) from exc
 
 __version__ = "0.1.0"
 __all__ = [

@@ -14,21 +14,32 @@ EDITABLE=0
 PIP_EXTRA_ARGS=()
 
 # Parse arguments
-for arg in "$@"; do
-    case "$arg" in
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         --editable|-e)
             EDITABLE=1
+            shift
             ;;
         --user)
             PIP_EXTRA_ARGS+=("--user")
+            shift
             ;;
         --prefix)
-            shift
-            PIP_EXTRA_ARGS+=("--prefix" "$1")
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: --prefix requires a path"
+                exit 2
+            fi
+            PIP_EXTRA_ARGS+=("--prefix" "$2")
+            shift 2
             ;;
         --help|-h)
             echo "Usage: $0 [--editable] [--user] [--prefix PATH]"
             exit 0
+            ;;
+        *)
+            echo "ERROR: unknown option '$1'"
+            echo "Usage: $0 [--editable] [--user] [--prefix PATH]"
+            exit 2
             ;;
     esac
 done

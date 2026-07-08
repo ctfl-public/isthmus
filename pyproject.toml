@@ -40,4 +40,4 @@ cmake.args = ["-DISTHMUS_BUILD_PYTHON=ON", "-DISTHMUS_BUILD_TESTS=OFF"]
 wheel.packages = ["python/isthmus"]
 
 # Minimum CMake version required (matches the project requirement).
-cmake.minimum-version = "3.14"
+cmake.version = ">=3.14"
