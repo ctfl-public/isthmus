@@ -106,6 +106,7 @@ struct QuantizedKeyHash {
 
 struct RepairStats {
     std::size_t degenerate_found = 0;
+    std::size_t paired_removed = 0;
     std::size_t quad_flipped = 0;
     std::size_t kept_for_topology = 0;
 };
@@ -579,7 +580,65 @@ SurfaceMesh repair_degenerate_triangles(
     auto edge_counts = build_edge_counts(mesh.triangles);
     std::vector<char> full_triangle_consumed(full_triangles.size(), 0);
 
+    /*
+     * First cancel zero-thickness flaps: two degenerate triangles that share
+     * the same longest edge and back onto each other. Removing such a pair is
+     * only allowed when no surviving edge would be left with a single incident
+     * face, so the cancellation can never open a hole in the mesh.
+     */
+    std::vector<char> degenerate_removed(degenerate_triangles.size(), 0);
+    {
+        std::unordered_map<EdgeKey, std::vector<std::size_t>> pairs_by_edge;
+        for (std::size_t i = 0; i < degenerate_triangles.size(); ++i) {
+            const auto& edge = degenerate_triangles[i].longest_edge;
+            pairs_by_edge[edge_key(edge[0], edge[1])].push_back(i);
+        }
+
+        for (const auto& [shared_key, members] : pairs_by_edge) {
+            if (members.size() != 2) {
+                continue;
+            }
+
+            const auto& tri_a = degenerate_triangles[members[0]].triangle;
+            const auto& tri_b = degenerate_triangles[members[1]].triangle;
+
+            /*
+             * Collect every edge of both triangles and how often the pair uses
+             * it. Removal is safe when no edge count in the mesh would drop to
+             * exactly one afterwards.
+             */
+            bool safe = true;
+            std::unordered_map<EdgeKey, int> pair_use;
+            for (const auto* tri : {&tri_a, &tri_b}) {
+                ++pair_use[edge_key((*tri)[0], (*tri)[1])];
+                ++pair_use[edge_key((*tri)[1], (*tri)[2])];
+                ++pair_use[edge_key((*tri)[2], (*tri)[0])];
+            }
+            for (const auto& [key, used] : pair_use) {
+                const auto it = edge_counts.find(key);
+                const int count = it == edge_counts.end() ? 0 : it->second;
+                if (count - used == 1) {
+                    safe = false;
+                    break;
+                }
+            }
+            if (!safe) {
+                continue;
+            }
+
+            degenerate_removed[members[0]] = 1;
+            degenerate_removed[members[1]] = 1;
+            for (const auto& [key, used] : pair_use) {
+                edge_counts[key] -= used;
+            }
+            stats.paired_removed += 2;
+        }
+    }
+
     for (std::size_t i = 0; i < degenerate_triangles.size(); ++i) {
+        if (degenerate_removed[i] != 0) {
+            continue;
+        }
 
         const auto& degenerate = degenerate_triangles[i];
         const auto& edge = degenerate.longest_edge;
@@ -856,7 +915,8 @@ SurfaceMesh clean_surface_mesh_3d(
         mesh = repair_degenerate_triangles(mesh, area_epsilon, repair_stats);
         if (options.verbose) {
             std::cout << "\t\t  found " << repair_stats.degenerate_found << " degenerate"
-                      << "; " << repair_stats.quad_flipped << " quad-flipped"
+                      << "; " << repair_stats.paired_removed << " removed as safe pairs"
+                      << ", " << repair_stats.quad_flipped << " quad-flipped"
                       << " and " << repair_stats.kept_for_topology << " kept for topology\n";
         }
 
