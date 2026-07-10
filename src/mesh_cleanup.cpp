@@ -500,6 +500,113 @@ SurfaceMesh repair_degenerate_triangles(
     return compact_used_vertices(out);
 }
 
+struct ComponentFilterStats {
+    std::size_t components = 0;
+    std::size_t pores_removed = 0;
+    std::size_t specks_removed = 0;
+};
+
+/*
+ * Drop closed enclosed cavity and floating solid specks.
+ *
+ * Marching cubes on XRCT voxel data produces, besides the main surface, small
+ * closed shells: enclosed cavities (pores sealed inside the solid) and
+ * floating solid specks. Signed volume distinguishes them, because triangle
+ * normals point from solid into void: a speck's normals face outward
+ * (positive volume) while a cavity's normals face inward (negative volume).
+ *
+ *  - Cavities are removed unconditionally. No particle can ever reach a
+ *    sealed pore, and their near-zero enclosed flow volumes are exactly what
+ *    broke SPARTA's cut3d/flood-fill marking. If ablation later opens a
+ *    pore, the next surface rebuild reconnects it to the main component and
+ *    it reappears naturally.
+ *  - Specks are removed only when smaller than min_speck_volume, which
+ *    filters sub-voxel weighting artifacts while keeping real free-standing
+ *    material.
+ */
+SurfaceMesh remove_trapped_components(
+    const SurfaceMesh& mesh,
+    double min_speck_volume,
+    ComponentFilterStats& stats) {
+    if (mesh.vertices.empty() || mesh.triangles.empty()) {
+        return mesh;
+    }
+
+    /*
+     * Identify connected components using Union-Find.
+     *  by uniting every triangle's three vertices, each component's root is the
+     *  smallest vertex id in that component. The connected triangle are all connected 
+     *  to the same root, so we can accumulate each component's signed volume.
+     */
+    UnionFind uf(mesh.vertices.size());
+    for (const auto& tri : mesh.triangles) {
+        uf.unite(tri[0], tri[1]);
+        uf.unite(tri[0], tri[2]);
+    }
+
+    /*
+     * Accumulate each component's signed volume with the divergence theorem.
+     * The absolute values are only meaningful for closed components, which is
+     * what marching cubes produces for isolated shells.
+     */
+    std::unordered_map<std::size_t, double> component_volume;
+    std::unordered_map<std::size_t, std::size_t> component_triangles;
+    for (const auto& tri : mesh.triangles) {
+        const auto& a = mesh.vertices[tri[0]];
+        const auto& b = mesh.vertices[tri[1]];
+        const auto& c = mesh.vertices[tri[2]];
+        const double signed_volume =
+            (a[0] * (b[1] * c[2] - b[2] * c[1]) -
+             a[1] * (b[0] * c[2] - b[2] * c[0]) +
+             a[2] * (b[0] * c[1] - b[1] * c[0])) / 6.0;
+        const auto root = uf.find(tri[0]);
+        component_volume[root] += signed_volume;
+        ++component_triangles[root];
+    }
+    stats.components = component_volume.size();
+
+    /*
+     * The dominant component (largest triangle count) is always kept, even if
+     * its signed volume were negative: orientation conventions belong to the
+     * winding checks, not to this filter.
+     */
+    std::size_t main_root = uf.find(mesh.triangles.front()[0]);
+    for (const auto& [root, count] : component_triangles) {
+        if (count > component_triangles[main_root]) {
+            main_root = root;
+        }
+    }
+
+    std::unordered_map<std::size_t, bool> keep;
+    for (const auto& [root, volume] : component_volume) {
+        if (root == main_root) {
+            keep[root] = true;
+        } else if (volume < 0.0) {
+            keep[root] = false;
+            ++stats.pores_removed;
+        } else if (volume < min_speck_volume) {
+            keep[root] = false;
+            ++stats.specks_removed;
+        } else {
+            keep[root] = true;
+        }
+    }
+
+    if (stats.pores_removed == 0 && stats.specks_removed == 0) {
+        return mesh;
+    }
+
+    SurfaceMesh out;
+    out.vertices = mesh.vertices;
+    out.triangles.reserve(mesh.triangles.size());
+    for (const auto& tri : mesh.triangles) {
+        if (keep[uf.find(tri[0])]) {
+            out.triangles.push_back(tri);
+        }
+    }
+    return compact_used_vertices(out);
+}
+
 }  // namespace
 
 SurfaceMesh clean_surface_mesh_3d(
@@ -562,6 +669,24 @@ SurfaceMesh clean_surface_mesh_3d(
             std::cout << "\t\t  found " << repair_stats.degenerate_found << " degenerate"
                       << "; " << repair_stats.quad_flipped << " quad-flipped"
                       << " and " << repair_stats.kept_for_topology << " kept for topology\n";
+        }
+
+        /*
+         * Finally drop sealed cavities and sub-voxel floating shells, which
+         * DSMC solvers cannot mark or use.
+         */
+        if (options.remove_trapped_components) {
+            if (options.verbose) std::cout << "\t\tremoving trapped components...\n";
+            const double voxel_volume = std::pow(options.voxel_size, 3);
+            const double min_speck_volume =
+                options.min_speck_volume_voxels * voxel_volume;
+            ComponentFilterStats component_stats;
+            mesh = remove_trapped_components(mesh, min_speck_volume, component_stats);
+            if (options.verbose) {
+                std::cout << "\t\t  " << component_stats.components << " components; removed "
+                          << component_stats.pores_removed << " sealed pores and "
+                          << component_stats.specks_removed << " sub-threshold specks\n";
+            }
         }
         return mesh;
     }
