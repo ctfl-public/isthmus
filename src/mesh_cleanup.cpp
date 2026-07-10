@@ -111,6 +111,58 @@ struct RepairStats {
 };
 
 /*
+ * Canonical 64-bit key for one undirected mesh edge.
+ *
+ * Vertex ids fit in 32 bits for every mesh this pipeline produces (about one
+ * million vertices), so packing both endpoints into one integer gives cheap
+ * hashing for the edge-count maps used by the topology guards.
+ */
+using EdgeKey = std::uint64_t;
+
+EdgeKey edge_key(std::size_t a, std::size_t b) {
+    if (a > b) {
+        std::swap(a, b);
+    }
+    return (static_cast<std::uint64_t>(a) << 32u) | static_cast<std::uint64_t>(b);
+}
+
+/*
+ * Count how many triangles reference each undirected edge.
+ *
+ * In a closed manifold mesh every edge has exactly two incident triangles;
+ * one incident triangle marks a boundary edge and three or more mark a
+ * non-manifold edge.
+ */
+std::unordered_map<EdgeKey, int> build_edge_counts(
+    const std::vector<std::array<std::size_t, 3>>& triangles) {
+    std::unordered_map<EdgeKey, int> counts;
+    counts.reserve(triangles.size() * 3u);
+    for (const auto& tri : triangles) {
+        ++counts[edge_key(tri[0], tri[1])];
+        ++counts[edge_key(tri[1], tri[2])];
+        ++counts[edge_key(tri[2], tri[0])];
+    }
+    return counts;
+}
+
+struct EdgeHealth {
+    std::size_t non_manifold = 0;
+    std::size_t boundary = 0;
+};
+
+EdgeHealth edge_health(const std::vector<std::array<std::size_t, 3>>& triangles) {
+    EdgeHealth health;
+    for (const auto& [key, count] : build_edge_counts(triangles)) {
+        if (count > 2) {
+            ++health.non_manifold;
+        } else if (count == 1) {
+            ++health.boundary;
+        }
+    }
+    return health;
+}
+
+/*
  * Keep together one low-area triangle and the longest-edge signature used by
  * the connectivity-repair pass.
  */
@@ -174,7 +226,8 @@ QuantizedKey quantize(
 SurfaceMesh compress_mesh(
     const std::vector<std::array<double, 3>>& vertices,
     const std::vector<std::array<std::size_t, 3>>& triangles,
-    UnionFind& uf) {
+    UnionFind& uf,
+    std::vector<std::size_t>* old_to_new_out = nullptr) {
     SurfaceMesh out;
     if (vertices.empty()) {
         return out;
@@ -214,7 +267,81 @@ SurfaceMesh compress_mesh(
         out.triangles.push_back(remapped);
     }
 
+    if (old_to_new_out != nullptr) {
+        *old_to_new_out = std::move(old_to_new);
+    }
+
     return out;
+}
+
+/*
+ * Merge candidate vertex pairs without damaging mesh topology.
+ *
+ * Blind duplicate-vertex merging can fuse separate triangle fans that only
+ * touch in space, which is what created the non-manifold edges and vertices
+ * observed after cleanup on tight microstructure meshes. This driver applies
+ * the requested merges, checks the resulting edge health, and when the merge
+ * introduced new non-manifold or boundary edges it freezes every vertex
+ * involved in a bad edge and retries without those merges. Merges that are
+ * topologically safe still happen; unsafe ones are skipped.
+ */
+SurfaceMesh merge_vertices_topology_safe(
+    const SurfaceMesh& mesh,
+    const std::vector<std::pair<std::size_t, std::size_t>>& candidate_pairs,
+    std::size_t& frozen_vertices_out) {
+    const EdgeHealth before = edge_health(mesh.triangles);
+    std::vector<char> frozen(mesh.vertices.size(), 0);
+    frozen_vertices_out = 0;
+
+    constexpr int kMaxGuardIterations = 20;
+    for (int iteration = 0; iteration < kMaxGuardIterations; ++iteration) {
+        UnionFind uf(mesh.vertices.size());
+        bool any_union = false;
+        for (const auto& [a, b] : candidate_pairs) {
+            if (frozen[a] == 0 && frozen[b] == 0) {
+                uf.unite(a, b);
+                any_union = true;
+            }
+        }
+
+        std::vector<std::size_t> old_to_new;
+        SurfaceMesh merged = compress_mesh(mesh.vertices, mesh.triangles, uf, &old_to_new);
+        if (!any_union) {
+            return merged;
+        }
+
+        const EdgeHealth after = edge_health(merged.triangles);
+        if (after.non_manifold <= before.non_manifold && after.boundary <= before.boundary) {
+            return merged;
+        }
+
+        /*
+         * The merge made topology worse somewhere. Mark every vertex touching
+         * a bad edge in the merged mesh, then freeze the source vertices that
+         * map onto those, so the next iteration skips the offending merges.
+         */
+        std::vector<char> bad_new_vertex(merged.vertices.size(), 0);
+        for (const auto& [key, count] : build_edge_counts(merged.triangles)) {
+            if (count == 2) {
+                continue;
+            }
+            bad_new_vertex[static_cast<std::size_t>(key >> 32u)] = 1;
+            bad_new_vertex[static_cast<std::size_t>(key & 0xffffffffu)] = 1;
+        }
+        for (std::size_t old_id = 0; old_id < old_to_new.size(); ++old_id) {
+            if (bad_new_vertex[old_to_new[old_id]] != 0 && frozen[old_id] == 0) {
+                frozen[old_id] = 1;
+                ++frozen_vertices_out;
+            }
+        }
+    }
+
+    /*
+     * Guard-iteration budget exhausted: give up on merging entirely rather
+     * than return a mesh with damaged topology.
+     */
+    UnionFind identity(mesh.vertices.size());
+    return compress_mesh(mesh.vertices, mesh.triangles, identity);
 }
 
 /*
@@ -254,8 +381,10 @@ SurfaceMesh compact_used_vertices(const SurfaceMesh& mesh) {
  *
  * This matches the bundled `remove_degenerate_faces()` pre-pass behavior.
  */
-SurfaceMesh remove_exact_duplicate_vertices(const SurfaceMesh& mesh) {
-    UnionFind uf(mesh.vertices.size());
+SurfaceMesh remove_exact_duplicate_vertices(
+    const SurfaceMesh& mesh,
+    std::size_t& frozen_vertices_out) {
+    std::vector<std::pair<std::size_t, std::size_t>> candidate_pairs;
 
     /*
      * Only exact coordinate duplicates are merged in this stage, and only when
@@ -267,17 +396,17 @@ SurfaceMesh remove_exact_duplicate_vertices(const SurfaceMesh& mesh) {
         const auto& v2 = mesh.vertices[tri[2]];
 
         if (exactly_equal(v0, v1)) {
-            uf.unite(tri[0], tri[1]);
+            candidate_pairs.emplace_back(tri[0], tri[1]);
         }
         if (exactly_equal(v0, v2)) {
-            uf.unite(tri[0], tri[2]);
+            candidate_pairs.emplace_back(tri[0], tri[2]);
         }
         if (exactly_equal(v1, v2)) {
-            uf.unite(tri[1], tri[2]);
+            candidate_pairs.emplace_back(tri[1], tri[2]);
         }
     }
 
-    return compress_mesh(mesh.vertices, mesh.triangles, uf);
+    return merge_vertices_topology_safe(mesh, candidate_pairs, frozen_vertices_out);
 }
 
 /*
@@ -288,12 +417,14 @@ SurfaceMesh remove_exact_duplicate_vertices(const SurfaceMesh& mesh) {
  */
 SurfaceMesh remove_near_duplicate_vertices(
     const SurfaceMesh& mesh,
-    double vertex_epsilon) {
+    double vertex_epsilon,
+    std::size_t& frozen_vertices_out) {
     if (mesh.vertices.empty() || vertex_epsilon <= 0.0) {
+        frozen_vertices_out = 0;
         return mesh;
     }
 
-    UnionFind uf(mesh.vertices.size());
+    std::vector<std::pair<std::size_t, std::size_t>> candidate_pairs;
     std::unordered_map<QuantizedKey, std::vector<std::size_t>, QuantizedKeyHash> bins;
     bins.reserve(mesh.vertices.size());
 
@@ -323,7 +454,7 @@ SurfaceMesh remove_near_duplicate_vertices(
 
                     for (const auto other_id : it->second) {
                         if (distance(mesh.vertices[vertex_id], mesh.vertices[other_id]) <= vertex_epsilon) {
-                            uf.unite(vertex_id, other_id);
+                            candidate_pairs.emplace_back(vertex_id, other_id);
                         }
                     }
                 }
@@ -333,7 +464,7 @@ SurfaceMesh remove_near_duplicate_vertices(
         bins[key].push_back(vertex_id);
     }
 
-    return compress_mesh(mesh.vertices, mesh.triangles, uf);
+    return merge_vertices_topology_safe(mesh, candidate_pairs, frozen_vertices_out);
 }
 
 /*
@@ -637,10 +768,12 @@ SurfaceMesh clean_surface_mesh_3d(
     {
         const auto v_before = raw_mesh.vertices.size();
         const auto t_before = raw_mesh.triangles.size();
-        auto mesh = remove_exact_duplicate_vertices(raw_mesh);
+        std::size_t frozen_exact = 0;
+        auto mesh = remove_exact_duplicate_vertices(raw_mesh, frozen_exact);
         if (options.verbose) {
             std::cout << "\t\t  merged " << v_before << " -> " << mesh.vertices.size()
-                      << " vertices, dropped " << (t_before - mesh.triangles.size()) << " triangles\n";
+                      << " vertices, dropped " << (t_before - mesh.triangles.size()) << " triangles"
+                      << " (" << frozen_exact << " vertices kept for topology)\n";
         }
 
         /*
@@ -651,10 +784,12 @@ SurfaceMesh clean_surface_mesh_3d(
         {
             const auto v2_before = mesh.vertices.size();
             const auto t2_before = mesh.triangles.size();
-            mesh = remove_near_duplicate_vertices(mesh, vertex_epsilon);
+            std::size_t frozen_near = 0;
+            mesh = remove_near_duplicate_vertices(mesh, vertex_epsilon, frozen_near);
             if (options.verbose) {
                 std::cout << "\t\t  merged " << v2_before << " -> " << mesh.vertices.size()
-                          << " vertices, dropped " << (t2_before - mesh.triangles.size()) << " triangles\n";
+                          << " vertices, dropped " << (t2_before - mesh.triangles.size()) << " triangles"
+                          << " (" << frozen_near << " vertices kept for topology)\n";
             }
         }
 
