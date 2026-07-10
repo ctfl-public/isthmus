@@ -751,7 +751,7 @@ struct ComponentFilterStats {
 };
 
 /*
- * Drop closed enclosed cavity and floating solid specks.
+ * Filter isolated closed surface components.
  *
  * Marching cubes on XRCT voxel data produces, besides the main surface, small
  * closed shells: enclosed cavities (pores sealed inside the solid) and
@@ -759,18 +759,25 @@ struct ComponentFilterStats {
  * normals point from solid into void: a speck's normals face outward
  * (positive volume) while a cavity's normals face inward (negative volume).
  *
- *  - Cavities are removed unconditionally. No particle can ever reach a
- *    sealed pore, and their near-zero enclosed flow volumes are exactly what
- *    broke SPARTA's cut3d/flood-fill marking. If ablation later opens a
- *    pore, the next surface rebuild reconnects it to the main component and
- *    it reappears naturally.
- *  - Specks are removed only when smaller than min_speck_volume, which
- *    filters sub-voxel weighting artifacts while keeping real free-standing
- *    material.
+ * Two independent criteria decide removal:
+ *
+ *  - De-noising: any component (cavity or speck) with |enclosed volume| below
+ *    min_component_volume is dropped. The voxel grid cannot resolve features
+ *    smaller than one voxel, so sub-voxel shells are artifacts of the
+ *    weighting/iso interpolation, not data.
+ *  - Sealed-pore removal (opt-in, solver-specific): cavities of ANY size are
+ *    dropped when remove_sealed_pores is set. DSMC solvers need this: no
+ *    particle can reach a sealed pore, its interior is wrongly counted as
+ *    flow volume, and a pore contained in a single grid cell poisons
+ *    SPARTA's inside/outside cell marking. If ablation later opens a pore,
+ *    the next surface rebuild reconnects it to the main component and it
+ *    reappears naturally. Off by default because enclosed porosity is real
+ *    information for non-DSMC consumers.
  */
-SurfaceMesh remove_trapped_components(
+SurfaceMesh filter_closed_components(
     const SurfaceMesh& mesh,
-    double min_speck_volume,
+    double min_component_volume,
+    bool remove_sealed_pores,
     ComponentFilterStats& stats) {
     if (mesh.vertices.empty() || mesh.triangles.empty()) {
         return mesh;
@@ -826,9 +833,14 @@ SurfaceMesh remove_trapped_components(
         if (root == main_root) {
             keep[root] = true;
         } else if (volume < 0.0) {
-            keep[root] = false;
-            ++stats.pores_removed;
-        } else if (volume < min_speck_volume) {
+            // Cavity: remove when sub-resolution noise or when the caller
+            // asked for all sealed pores to go.
+            const bool drop = remove_sealed_pores || -volume < min_component_volume;
+            keep[root] = !drop;
+            if (drop) {
+                ++stats.pores_removed;
+            }
+        } else if (volume < min_component_volume) {
             keep[root] = false;
             ++stats.specks_removed;
         } else {
@@ -921,20 +933,25 @@ SurfaceMesh clean_surface_mesh_3d(
         }
 
         /*
-         * Finally drop sealed cavities and sub-voxel floating shells, which
-         * DSMC solvers cannot mark or use.
+         * Finally filter isolated closed components: sub-voxel shells are
+         * reconstruction noise (both cavities and specks), and sealed pores
+         * are additionally removed when the caller opted in for DSMC use.
          */
-        if (options.remove_trapped_components) {
-            if (options.verbose) std::cout << "\t\tremoving trapped components...\n";
+        if (options.min_component_volume_voxels > 0.0 || options.remove_sealed_pores) {
+            if (options.verbose) std::cout << "\t\tfiltering closed components...\n";
             const double voxel_volume = std::pow(options.voxel_size, 3);
-            const double min_speck_volume =
-                options.min_speck_volume_voxels * voxel_volume;
+            const double min_component_volume =
+                options.min_component_volume_voxels * voxel_volume;
             ComponentFilterStats component_stats;
-            mesh = remove_trapped_components(mesh, min_speck_volume, component_stats);
+            mesh = filter_closed_components(
+                mesh,
+                min_component_volume,
+                options.remove_sealed_pores,
+                component_stats);
             if (options.verbose) {
                 std::cout << "\t\t  " << component_stats.components << " components; removed "
-                          << component_stats.pores_removed << " sealed pores and "
-                          << component_stats.specks_removed << " sub-threshold specks\n";
+                          << component_stats.pores_removed << " cavities and "
+                          << component_stats.specks_removed << " specks\n";
             }
         }
         return mesh;

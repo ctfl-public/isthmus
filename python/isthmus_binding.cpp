@@ -53,12 +53,14 @@ PYBIND11_MODULE(_isthmus, m) {
             "Run the surface extraction stage (default: True).")
         .def_readwrite("build_flux_association", &RunOptions::build_flux_association,
             "Compute surface-voxel ownership fractions for flux mapping (default: True).")
-        .def_readwrite("remove_trapped_components", &RunOptions::remove_trapped_components,
-            "Drop sealed cavities and sub-voxel floating shells that DSMC solvers "
-            "cannot mark or use (default: True).")
-        .def_readwrite("min_speck_volume_voxels", &RunOptions::min_speck_volume_voxels,
-            "Volume threshold for the floating-shell filter, in units of one voxel "
-            "volume (default: 0.1).")
+        .def_readwrite("min_component_volume_voxels", &RunOptions::min_component_volume_voxels,
+            "De-noising threshold in voxel volumes: isolated closed components "
+            "(cavities and specks alike) with |enclosed volume| below this are "
+            "removed as reconstruction noise. 0 keeps everything (default: 0.1).")
+        .def_readwrite("remove_sealed_pores", &RunOptions::remove_sealed_pores,
+            "Remove ALL sealed cavities regardless of size. Enable for DSMC/SPARTA "
+            "use; off by default because enclosed porosity is real information for "
+            "other consumers (default: False).")
         .def_readwrite("verbose", &RunOptions::verbose,
             "Print progress messages to stdout during the run (default: False).")
         .def("__repr__", [](const RunOptions& r) {

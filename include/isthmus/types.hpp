@@ -31,13 +31,18 @@ enum class Dimension : std::size_t {
  *   require. 0 disables the clamp and allows degenerate sliver triangles.
  * `build_surface`: run the surface extraction
  * `build_flux_association`: compute surface-voxel ownership fractions for flux mapping.
- * `remove_trapped_components`: drop closed surface components that DSMC
- *   solvers cannot handle: cavities sealed inside the solid (no particle can
- *   reach them, and their near-zero enclosed volumes break SPARTA cut-cell
- *   marking) and floating solid shells smaller than
- *   `min_speck_volume_voxels` voxel volumes (sub-voxel weighting artifacts).
- * `min_speck_volume_voxels`: threshold for the speck filter above, in units
- *   of one voxel volume.
+ * `min_component_volume_voxels`: de-noising threshold in units of one voxel
+ *   volume. Closed surface components (floating shells and sealed cavities
+ *   alike) with |enclosed volume| below this are removed: the voxel grid
+ *   cannot resolve features smaller than a voxel, so such shells are
+ *   interpolation artifacts of the weighting/iso stages, not data. Set 0 to
+ *   keep every component.
+ * `remove_sealed_pores`: additionally remove ALL sealed cavities regardless
+ *   of size. Off by default because enclosed porosity is real information
+ *   for many consumers (density, conductivity, porosity statistics).
+ *   DSMC/SPARTA drivers should enable it: sealed pores are unreachable by
+ *   particles, are wrongly counted as flow volume, and a pore contained in a
+ *   single grid cell poisons SPARTA's inside/outside cell marking.
  * `verbose`: print progress messages to stdout at each major stage.
  */
 struct RunOptions {
@@ -49,8 +54,8 @@ struct RunOptions {
     double edge_clamp = 0.01;
     bool build_surface = true;
     bool build_flux_association = true;
-    bool remove_trapped_components = true;
-    double min_speck_volume_voxels = 0.1;
+    double min_component_volume_voxels = 0.1;
+    bool remove_sealed_pores = false;
     bool verbose = false;
 };
 

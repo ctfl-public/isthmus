@@ -246,6 +246,108 @@ TEST_CASE(test_mesh_cleanup_repairs_degenerate_triangle_connectivity) {
     CHECK(actual == expected);
 }
 
+/*
+ * Append an axis-aligned cube shell with outward normals (solid inside).
+ */
+void append_cube_shell(isthmus::SurfaceMesh& mesh, double lo, double hi) {
+    const std::size_t base = mesh.vertices.size();
+    mesh.vertices.insert(mesh.vertices.end(), {
+        {lo, lo, lo}, {hi, lo, lo}, {hi, hi, lo}, {lo, hi, lo},
+        {lo, lo, hi}, {hi, lo, hi}, {hi, hi, hi}, {lo, hi, hi}
+    });
+    const std::array<std::array<std::size_t, 3>, 12> faces{{
+        {{0, 3, 2}}, {{0, 2, 1}},
+        {{4, 5, 6}}, {{4, 6, 7}},
+        {{0, 1, 5}}, {{0, 5, 4}},
+        {{3, 7, 6}}, {{3, 6, 2}},
+        {{0, 4, 7}}, {{0, 7, 3}},
+        {{1, 2, 6}}, {{1, 6, 5}}
+    }};
+    for (const auto& tri : faces) {
+        mesh.triangles.push_back({{tri[0] + base, tri[1] + base, tri[2] + base}});
+    }
+}
+
+/*
+ * Append an octahedron shell. Outward normals model a floating solid speck;
+ * inverted normals model a sealed cavity. Enclosed volume is (4/3) r^3.
+ */
+void append_octahedron(
+    isthmus::SurfaceMesh& mesh,
+    const std::array<double, 3>& center,
+    double radius,
+    bool inverted) {
+    const std::size_t base = mesh.vertices.size();
+    const auto [cx, cy, cz] = center;
+    mesh.vertices.insert(mesh.vertices.end(), {
+        {cx + radius, cy, cz}, {cx - radius, cy, cz},
+        {cx, cy + radius, cz}, {cx, cy - radius, cz},
+        {cx, cy, cz + radius}, {cx, cy, cz - radius}
+    });
+    std::array<std::array<std::size_t, 3>, 8> faces{{
+        {{0, 2, 4}}, {{2, 1, 4}}, {{1, 3, 4}}, {{3, 0, 4}},
+        {{2, 0, 5}}, {{1, 2, 5}}, {{3, 1, 5}}, {{0, 3, 5}}
+    }};
+    for (auto& tri : faces) {
+        if (inverted) {
+            std::swap(tri[1], tri[2]);
+        }
+        mesh.triangles.push_back({{tri[0] + base, tri[1] + base, tri[2] + base}});
+    }
+}
+
+TEST_CASE(test_mesh_cleanup_component_filter_denoises_but_keeps_real_pores) {
+    using namespace isthmus;
+
+    /*
+     * Case:
+     * Main surface = cube shell. Add a sub-resolution cavity and speck
+     * (octahedra with |volume| = 0.0107 voxel volumes, below the default
+     * 0.1 threshold) plus one real-sized cavity (volume 10.7 voxel volumes).
+     *
+     * Expected outcome with default options (remove_sealed_pores = false):
+     * both sub-resolution shells are removed as noise, the real cavity is
+     * preserved because enclosed porosity is legitimate data.
+     */
+    SurfaceMesh mesh;
+    append_cube_shell(mesh, 0.0, 10.0);
+    append_octahedron(mesh, {{5.0, 5.0, 5.0}}, 2.0, true);    // real cavity
+    append_octahedron(mesh, {{2.0, 5.0, 5.0}}, 0.2, true);    // noise cavity
+    append_octahedron(mesh, {{20.0, 20.0, 20.0}}, 0.2, false); // noise speck
+
+    RunOptions options;
+    options.voxel_size = 1.0;
+    const auto cleaned = mesh_cleanup::clean_surface_mesh_3d(mesh, 1.0, options);
+
+    CHECK(cleaned.triangles.size() == 12u + 8u);
+}
+
+TEST_CASE(test_mesh_cleanup_remove_sealed_pores_drops_all_cavities) {
+    using namespace isthmus;
+
+    /*
+     * Case:
+     * Same geometry idea, but with remove_sealed_pores enabled (the DSMC
+     * driver setting) and a real-sized speck added.
+     *
+     * Expected outcome:
+     * every cavity goes regardless of size; the real-sized speck survives
+     * because it is legitimate free-standing material.
+     */
+    SurfaceMesh mesh;
+    append_cube_shell(mesh, 0.0, 10.0);
+    append_octahedron(mesh, {{5.0, 5.0, 5.0}}, 2.0, true);     // real cavity
+    append_octahedron(mesh, {{2.0, 5.0, 5.0}}, 0.2, true);     // noise cavity
+    append_octahedron(mesh, {{20.0, 20.0, 20.0}}, 2.0, false); // real speck
+
+    RunOptions options;
+    options.voxel_size = 1.0;
+    options.remove_sealed_pores = true;
+    const auto cleaned = mesh_cleanup::clean_surface_mesh_3d(mesh, 1.0, options);
+
+    CHECK(cleaned.triangles.size() == 12u + 8u);
+}
+
 TEST_CASE(test_flux_mapping_tolerates_degenerate_surface_triangle) {
     using namespace isthmus;
 
