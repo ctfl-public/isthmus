@@ -570,8 +570,15 @@ SurfaceMesh repair_degenerate_triangles(
     /*
      * Repair the surviving single degenerates by replacing the associated full
      * triangle with two new triangles that span the same quadrilateral region.
+     *
+     * Each flip is validated against the global edge-count map before it is
+     * applied. Without those guards this pass could reuse one full triangle
+     * for several repairs, duplicate faces, or create non-manifold and
+     * boundary edges — the exact damage observed downstream in SPARTA.
      */
-    bool repaired = false;
+    auto edge_counts = build_edge_counts(mesh.triangles);
+    std::vector<char> full_triangle_consumed(full_triangles.size(), 0);
+
     for (std::size_t i = 0; i < degenerate_triangles.size(); ++i) {
 
         const auto& degenerate = degenerate_triangles[i];
@@ -579,47 +586,94 @@ SurfaceMesh repair_degenerate_triangles(
         const auto replacement_vertex_from_degenerate =
             triangle_vertex_not_in_edge(degenerate.triangle, edge);
 
-        repaired = false;
-        for (std::size_t full_id = 0; full_id < full_triangles.size(); ++full_id) {
-            auto full_triangle = full_triangles[full_id];
-            if (!triangle_contains_edge(full_triangle, edge)) {
-                continue;
-            }
+        /*
+         * The flip removes edge A-C and introduces edge B-M. It is only valid
+         * when A-C is an ordinary manifold edge shared by exactly this
+         * degenerate and one full triangle, and when B-M does not already
+         * exist (otherwise the flip would create a non-manifold edge).
+         */
+        const auto shared_edge_it = edge_counts.find(edge_key(edge[0], edge[1]));
+        const int shared_edge_count = shared_edge_it == edge_counts.end() ? 0 : shared_edge_it->second;
 
-            const auto replacement_vertex_from_full =
-                triangle_vertex_not_in_edge(full_triangle, edge);
-
-            /*
-             * The replacement topology is:
-             *   full ACM  -> BCM
-             *   degen ABC -> ABM
-             * using the canonicalized edge endpoints as A and C.
-             */
-            for (auto& vertex_id : full_triangle) {
-                if (vertex_id == edge[0]) {
-                    vertex_id = replacement_vertex_from_degenerate;
+        bool repaired = false;
+        if (shared_edge_count == 2) {
+            const std::size_t original_full_count = full_triangle_consumed.size();
+            for (std::size_t full_id = 0; full_id < original_full_count; ++full_id) {
+                if (full_triangle_consumed[full_id] != 0) {
+                    continue;
                 }
-            }
-
-            auto second_triangle = degenerate.triangle;
-            for (auto& vertex_id : second_triangle) {
-                if (vertex_id == edge[1]) {
-                    vertex_id = replacement_vertex_from_full;
+                auto full_triangle = full_triangles[full_id];
+                if (!triangle_contains_edge(full_triangle, edge)) {
+                    continue;
                 }
-            }
 
-            full_triangles[full_id] = full_triangle;
-            full_triangles.push_back(second_triangle);
-            repaired = true;
-            ++stats.quad_flipped;
-            break;
+                const auto replacement_vertex_from_full =
+                    triangle_vertex_not_in_edge(full_triangle, edge);
+
+                if (replacement_vertex_from_full == replacement_vertex_from_degenerate) {
+                    continue;
+                }
+                if (edge_counts.count(edge_key(
+                        replacement_vertex_from_degenerate,
+                        replacement_vertex_from_full)) != 0) {
+                    continue;
+                }
+
+                /*
+                 * The replacement topology is:
+                 *   full ACM  -> BCM
+                 *   degen ABC -> ABM
+                 * using the canonicalized edge endpoints as A and C.
+                 */
+                for (auto& vertex_id : full_triangle) {
+                    if (vertex_id == edge[0]) {
+                        vertex_id = replacement_vertex_from_degenerate;
+                    }
+                }
+
+                auto second_triangle = degenerate.triangle;
+                for (auto& vertex_id : second_triangle) {
+                    if (vertex_id == edge[1]) {
+                        vertex_id = replacement_vertex_from_full;
+                    }
+                }
+
+                /*
+                 * Both replacement triangles must clear the degeneracy
+                 * threshold, or the flip only relocates the sliver.
+                 */
+                if (triangle_area(mesh, full_triangle) < area_epsilon ||
+                    triangle_area(mesh, second_triangle) < area_epsilon) {
+                    continue;
+                }
+
+                full_triangles[full_id] = full_triangle;
+                full_triangles.push_back(second_triangle);
+                full_triangle_consumed[full_id] = 1;
+                full_triangle_consumed.push_back(1);
+
+                /*
+                 * Keep the edge-count map in sync with the flip: the shared
+                 * edge A-C loses both faces and the new diagonal B-M gains two.
+                 */
+                edge_counts[edge_key(edge[0], edge[1])] -= 2;
+                edge_counts[edge_key(
+                    replacement_vertex_from_degenerate,
+                    replacement_vertex_from_full)] += 2;
+
+                repaired = true;
+                ++stats.quad_flipped;
+                break;
+            }
         }
 
         // if reached this point, means the degenerate triangle does not
-        // share its longest edge with any full triangle and cannot be repaired,
-        // so we keep it as is to keep triangle connectivity.
+        // share its longest edge with exactly one full triangle in a way that
+        // can be flipped safely, so we keep it as is to preserve connectivity.
         if (!repaired) {
             full_triangles.push_back(degenerate.triangle);
+            // Kept degenerates must never serve as flip partners later.
+            full_triangle_consumed.push_back(1);
             ++stats.kept_for_topology;
         }
     }
