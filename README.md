@@ -4,12 +4,14 @@
 
 -----
 # ISTHMUS: **I**nterfacing **S**urface **T**riangles and voxels for **H**eterogenous **MU**ltiphysics **S**imulations
-ISTHMUS, originally developed at the [Computational Thermophysics and Fluids Laboratory](https://ctfl.engr.uky.edu/) (CFTL) of University of Kentucky, provides a bridge between voxelized geometries and their surface representations. While voxels and pixels are commonly used to approximate solid structures in imaging and simulations, voxelized surfaces fail to capture curved interfaces, creating challenges when modeling fluid flow around them. Isthmus introduces **Marching Windows**, a method to generate accurate surface definitions for voxelized structures and consistently transfer fluxes between the surface mesh and voxels.
+ISTHMUS provides a bridge between voxelized geometries and their surface representations. While voxels and pixels are commonly used to approximate solid structures in imaging and simulations, voxelized surfaces fail to capture curved interfaces, creating challenges when modeling fluid flow around them. Isthmus introduces **Marching Windows**, a method to generate accurate surface definitions for voxelized structures and consistently transfer fluxes between the surface mesh and voxels.
 
 This repository root now contains the native C++ implementation of ISTHMUS. The C++ library is intended to provide a reusable native interface for downstream solvers while preserving the marching-windows behavior that ISTHMUS relies on.
 
 For examples of the capabilities of ISTHMUS, see the native demos located in the [`examples/`](examples/) directory.
 The technical details of the algorithm implemented in ISTHMUS are presented in [this](https://arxiv.org/abs/2603.07396) ArXiv document.
+
+ISTHMUS is developed by the Computational Thermophysics and Fluids Laboratory (CTFL). Follow the lab's research at [https://ctfl.engr.uky.edu/](https://ctfl.engr.uky.edu/).
 
 ## License
 
