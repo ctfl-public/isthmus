@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
     RunOptions options;
     options.dimension = Dimension::D3;
     options.voxel_size = cube_side_length / 2.0;
-    options.marching_voxel_ratio = (marching_grid_length / 4.0) / options.voxel_size;
+    options.marching_voxel_ratio = 1.5;
     options.weighting = false;
     options.build_surface = true;
     options.build_flux_association = false;
